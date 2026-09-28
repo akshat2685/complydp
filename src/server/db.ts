@@ -24,7 +24,11 @@ export const IS_REMOTE = (() => {
 })();
 
 const DATA_DIR = path.join(process.cwd(), "data");
-const LOCAL_DB_PATH = process.env.PRamaan_DB_PATH || path.join(DATA_DIR, "pramaan.db");
+// Accept both casings; PRAMAAN_DB_PATH (all caps) is the documented name.
+// (The mixed-case PRamaan_DB_PATH is a legacy typo — still honored so existing
+// setups don't silently switch databases.)
+const LOCAL_DB_PATH =
+  process.env.PRAMAAN_DB_PATH || process.env.PRamaan_DB_PATH || path.join(DATA_DIR, "pramaan.db");
 
 let _client: Client | null = null;
 let _init: Promise<Client> | null = null;
@@ -402,18 +406,40 @@ async function migrate(client: Client) {
   // Seed when the tenant table is empty.
   const rs = await client.execute("SELECT COUNT(*) AS n FROM tenant");
   const n = Number((rs.rows[0] as unknown as { n: unknown } | undefined)?.n ?? 0);
-  if (n === 0 && (await claimSeed(client))) {
-    try {
-      await seedDemoTenant(client);
-    } catch (e) {
-      // Release the claim so a later boot retries instead of serving half-seeded data.
-      await client.execute("DELETE FROM _seed_claim WHERE id = 1");
-      throw e;
+  if (n === 0) {
+    if (await claimSeed(client)) {
+      try {
+        await seedDemoTenant(client);
+      } catch (e) {
+        // Release the claim so a later boot retries instead of serving half-seeded data.
+        await client.execute("DELETE FROM _seed_claim WHERE id = 1");
+        throw e;
+      }
+      // Fail fast: the seed just built hash chains. A broken chain here means the
+      // seed misfired, and booting would serve a corrupt evidence ledger.
+      // Retry the verify: Turso's read-after-write visibility can flake on a
+      // fresh database, and a single flaky read must not fail the whole build.
+      // A genuinely broken chain fails every attempt and still throws.
+      let v = await ledgerVerifyClient(client);
+      for (let attempt = 2; !v.ok && attempt <= 5; attempt++) {
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        v = await ledgerVerifyClient(client);
+      }
+      if (!v.ok) throw new Error(`seed produced a broken evidence chain (broken at seq ${v.brokenAt})`);
+    } else {
+      // Another process won the seed claim (parallel build workers, or a
+      // concurrent boot). Wait for the seed to land instead of prerendering
+      // against a half-seeded database.
+      const start = Date.now();
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const rs2 = await client.execute("SELECT COUNT(*) AS n FROM tenant");
+        if (Number((rs2.rows[0] as unknown as { n: unknown } | undefined)?.n ?? 0) > 0) break;
+        if (Date.now() - start > 120_000) {
+          throw new Error("timed out waiting for a concurrent seed to finish");
+        }
+      }
     }
-    // Fail fast: the seed just built hash chains. A broken chain here means the
-    // seed misfired, and booting would serve a corrupt evidence ledger.
-    const v = await ledgerVerifyClient(client);
-    if (!v.ok) throw new Error(`seed produced a broken evidence chain (broken at seq ${v.brokenAt})`);
   }
 }
 
