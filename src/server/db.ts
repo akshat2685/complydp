@@ -428,22 +428,6 @@ CREATE TABLE IF NOT EXISTS notices (
 `;
 
 async function migrate(client: Client) {
-  // ONE-TIME production wipe (2026-09-28): set PRAMAAN_WIPE_ON_BOOT=1 to drop
-  // the app tables carrying the old demo tenant, then the schema below
-  // recreates them empty. Explicit table list — never touch sqlite_% or any
-  // Turso internal tables. Remove this block after the wipe deploy goes live.
-  if (process.env.PRAMAAN_WIPE_ON_BOOT === "1") {
-    const APP_TABLES = [
-      "tenant", "properties", "scans", "cookies", "consent_events",
-      "guardian_consents", "dsr_cases", "breach_cases", "breach_comms",
-      "vendors", "activity_vendors", "systems", "data_fields", "findings",
-      "processing_activities", "questionnaires", "questionnaire_responses",
-      "notices", "evidence_ledger",
-    ];
-    for (const t of APP_TABLES) {
-      await client.execute(`DROP TABLE IF EXISTS "${t}"`);
-    }
-  }
   await client.executeMultiple(SCHEMA);
   await ensureBreachCommsProviderColumns(client);
   // No demo seeding. Schema only — the real tenant is created by /setup.
