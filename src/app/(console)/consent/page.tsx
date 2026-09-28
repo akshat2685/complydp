@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { db, parseJson } from "@/server/db";
 import { PageHead } from "@/components/ui";
 import { ConsentTabs } from "./ConsentTabs";
-import type { ConsentSettings, CookieRow, ConsentEvent, BannerCfg } from "./types";
+import type { ConsentSettings, CookieRow, ConsentEvent, BannerCfg, GuardianConsent } from "./types";
 
 const DEFAULT_BANNER: BannerCfg = {
   title: "We value your privacy",
@@ -41,6 +41,10 @@ export default async function ConsentPage() {
     categories: parseJson(r.categories_json, { necessary: true, functional: false, analytics: false, marketing: false }),
   }));
 
+  const guardians = plain<GuardianConsent[]>(
+    d.prepare(`SELECT * FROM guardian_consents WHERE property_id = 'prop_main' ORDER BY created_at DESC LIMIT 200`).all()
+  );
+
   const h = await headers();
   const host = h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
@@ -53,7 +57,7 @@ export default async function ConsentPage() {
         title="Consent, recorded as evidence"
         lede="DPDP Act §6: consent must be free, specific, informed and withdrawable — and you must be able to prove it. Every choice below is hash-chained into an append-only log."
       />
-      <ConsentTabs settings={settings} cookies={cookies} events={events} snippetUrl={snippetUrl} />
+      <ConsentTabs settings={settings} cookies={cookies} events={events} guardians={guardians} snippetUrl={snippetUrl} />
     </div>
   );
 }

@@ -3,7 +3,8 @@
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHead, Card, CardTitle, Chip, EmptyState, Drawer } from "@/components/ui";
-import { Plus, Globe } from "lucide-react";
+import { Plus, Globe, Send, Copy, Check } from "lucide-react";
+import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire";
 import type { VendorRow } from "./page";
 
 const DPA_OPTIONS = ["not_started", "under_review", "signed", "not_required"] as const;
@@ -47,12 +48,46 @@ async function patch(url: string, payload: unknown) {
   return r.json();
 }
 
+function fmtShort(iso: string) {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** Questionnaire status chip for a vendor row. */
+function QChip({ q }: { q: VendorRow["questionnaire"] }) {
+  if (!q) return <Chip tone="mute" dot={false}>none</Chip>;
+  if (q.status === "responded") return <Chip tone="green" dot={false}>responded</Chip>;
+  return <Chip tone="amber" dot={false}>sent — awaiting</Chip>;
+}
+
+/** One-line response summary: submitted date + the two key answers. */
+function ResponseSummary({ q }: { q: NonNullable<VendorRow["questionnaire"]> }) {
+  if (q.status !== "responded" || !q.submitted_at) return null;
+  const dpa = (q.answers?.dpa_signed ?? "").trim().toLowerCase();
+  const cross = (q.answers?.cross_border ?? "").trim();
+  return (
+    <div className="text-[11px] text-ink-faint mt-0.5 leading-snug">
+      Assessed {fmtShort(q.submitted_at)} · DPA signed:{" "}
+      <span className={dpa === "yes" ? "text-status-green font-semibold" : "text-status-red font-semibold"}>
+        {dpa || "—"}
+      </span>
+      {cross && <span> · Transfers: {cross.length > 42 ? `${cross.slice(0, 42)}…` : cross}</span>}
+    </div>
+  );
+}
+
 function VendorDrawer({ vendor, onClose }: { vendor: VendorRow; onClose: () => void }) {
   const router = useRouter();
   const [notes, setNotes] = useState(vendor.notes);
   const [owner, setOwner] = useState(vendor.owner);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const q = vendor.questionnaire;
 
   const save = async () => {
     setSaving(true);
@@ -99,6 +134,101 @@ function VendorDrawer({ vendor, onClose }: { vendor: VendorRow; onClose: () => v
         </div>
 
         <div>
+          <label className="kicker block mb-1.5">Vendor questionnaire</label>
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <QChip q={q} />
+            {q?.status === "responded" && q.submitted_at && (
+              <span className="text-[11.5px] text-ink-faint">submitted {fmtShort(q.submitted_at)}</span>
+            )}
+          </div>
+          {q ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  className="field font-mono !text-[11px]"
+                  value={`${typeof window !== "undefined" ? window.location.origin : ""}${q.link}`}
+                  onClick={(e) => e.currentTarget.select()}
+                  aria-label="Questionnaire link"
+                />
+                <button
+                  className="btn btn-line btn-sm shrink-0"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`${window.location.origin}${q.link}`);
+                    } catch {
+                      window.prompt("Copy the questionnaire link:", `${window.location.origin}${q.link}`);
+                      return;
+                    }
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              {q.status === "responded" && q.answers && (
+                <div className="divide-y divide-dashed divide-hairline border border-hairline rounded-md px-3">
+                  {QUESTIONNAIRE_QUESTIONS.map((def) => (
+                    <div key={def.id} className="py-2">
+                      <div className="text-[11px] text-ink-faint">{def.label}</div>
+                      <div className="text-[12.5px] text-ink font-semibold whitespace-pre-wrap">
+                        {q.answers?.[def.id]?.trim() || "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                className="btn btn-line btn-sm"
+                disabled={sending}
+                onClick={async () => {
+                  setSending(true);
+                  try {
+                    await post(`/api/vendors/${vendor.id}/questionnaire`, {});
+                    router.refresh();
+                  } finally {
+                    setSending(false);
+                  }
+                }}
+              >
+                <Send className="w-3.5 h-3.5" /> {sending ? "Sending…" : "Send fresh questionnaire"}
+              </button>
+              <details className="text-[12px]">
+                <summary className="cursor-pointer text-ink-muted hover:text-ink">
+                  Preview the standard question set ({QUESTIONNAIRE_QUESTIONS.length} questions)
+                </summary>
+                <ol className="list-decimal ml-4 mt-2 space-y-1 text-ink-muted">
+                  {QUESTIONNAIRE_QUESTIONS.map((def) => (
+                    <li key={def.id}>
+                      {def.label}
+                      {def.required && <span className="text-status-red"> *</span>}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            </div>
+          ) : (
+            <button
+              className="btn btn-seal btn-sm"
+              disabled={sending}
+              onClick={async () => {
+                setSending(true);
+                try {
+                  await post(`/api/vendors/${vendor.id}/questionnaire`, {});
+                  router.refresh();
+                } finally {
+                  setSending(false);
+                }
+              }}
+            >
+              <Send className="w-3.5 h-3.5" /> {sending ? "Sending…" : "Send questionnaire"}
+            </button>
+          )}
+        </div>
+
+        <div>
           <label className="kicker block mb-1.5">DPA notes</label>
           <textarea
             className="field min-h-[120px]"
@@ -130,6 +260,9 @@ export function VendorsClient({ vendors }: { vendors: VendorRow[] }) {
   const [owner, setOwner] = useState("");
   const [err, setErr] = useState("");
   const [updating, setUpdating] = useState("");
+  const [sending, setSending] = useState("");
+  // `selected` can go stale after router.refresh(); always render from props.
+  const freshSelected = selected ? (vendors.find((v) => v.id === selected.id) ?? selected) : null;
 
   const stats = useMemo(() => {
     const s = { signed: 0, under_review: 0, not_started: 0, high: 0 };
@@ -159,6 +292,25 @@ export function VendorsClient({ vendors }: { vendors: VendorRow[] }) {
       router.refresh();
     } finally {
       setUpdating("");
+    }
+  };
+
+  const sendQ = async (id: string) => {
+    setSending(id);
+    try {
+      await post(`/api/vendors/${id}/questionnaire`, {});
+      router.refresh();
+    } finally {
+      setSending("");
+    }
+  };
+
+  const copyQLink = async (link: string) => {
+    const url = `${window.location.origin}${link}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt("Copy the questionnaire link:", url);
     }
   };
 
@@ -237,6 +389,7 @@ export function VendorsClient({ vendors }: { vendors: VendorRow[] }) {
                 <th className="text-left px-3 py-2 font-semibold hidden md:table-cell">Domain</th>
                 <th className="text-left px-3 py-2 font-semibold">DPA status</th>
                 <th className="text-left px-3 py-2 font-semibold hidden lg:table-cell">Risk</th>
+                <th className="text-left px-3 py-2 font-semibold">Questionnaire</th>
                 <th className="text-right px-5 py-2 font-semibold hidden md:table-cell">Owner</th>
               </tr>
             </thead>
@@ -252,6 +405,9 @@ export function VendorsClient({ vendors }: { vendors: VendorRow[] }) {
                       {v.discovered_via === "cookie_scan" && <Chip tone="teal" dot={false}>auto-discovered</Chip>}
                     </div>
                     {v.category && <div className="text-[11px] text-ink-faint mt-0.5">{v.category}</div>}
+                    {v.questionnaire?.status === "responded" && v.questionnaire.submitted_at && (
+                      <ResponseSummary q={v.questionnaire} />
+                    )}
                   </td>
                   <td className="px-3 py-2.5 font-mono text-[12px] text-ink-muted hidden md:table-cell">{v.domain || "—"}</td>
                   <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -278,6 +434,29 @@ export function VendorsClient({ vendors }: { vendors: VendorRow[] }) {
                       ))}
                     </select>
                   </td>
+                  <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2">
+                      <QChip q={v.questionnaire} />
+                      {v.questionnaire ? (
+                        <button
+                          className="btn btn-line btn-sm !px-2"
+                          title="Copy questionnaire link"
+                          onClick={() => copyQLink(v.questionnaire!.link)}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-line btn-sm"
+                          disabled={sending === v.id}
+                          onClick={() => sendQ(v.id)}
+                          title="Send the DPDP questionnaire to this vendor"
+                        >
+                          <Send className="w-3.5 h-3.5" /> {sending === v.id ? "Sending…" : "Send"}
+                        </button>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-5 py-2.5 text-right text-[12.5px] text-ink-muted hidden md:table-cell">
                     {v.owner || "—"}
                   </td>
@@ -291,7 +470,13 @@ export function VendorsClient({ vendors }: { vendors: VendorRow[] }) {
         </p>
       </Card>
 
-      {selected && <VendorDrawer vendor={selected} onClose={() => setSelected(null)} />}
+      {freshSelected && (
+        <VendorDrawer
+          key={freshSelected.id + (freshSelected.questionnaire?.id ?? "") + (freshSelected.questionnaire?.submitted_at ?? "")}
+          vendor={freshSelected}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }

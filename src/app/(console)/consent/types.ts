@@ -39,6 +39,19 @@ export interface ConsentEvent {
   created_at: string;
 }
 
+export interface GuardianConsent {
+  id: string;
+  property_id: string;
+  visitor_hash: string;
+  guardian_name: string;
+  relationship: string;
+  contact: string;
+  contact_hash: string;
+  consent_given: number;
+  verified_at: string | null;
+  created_at: string;
+}
+
 export const CATEGORY_TONES: Record<string, "red" | "amber" | "blue" | "teal" | "mute" | "seal"> = {
   necessary: "mute",
   functional: "blue",

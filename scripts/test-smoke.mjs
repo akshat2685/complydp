@@ -141,11 +141,184 @@ console.log("=== PRAMAAN MVP SMOKE TEST ===");
   }
 }
 
-// 10. Ledger grew and still verifies after all mutations
+// 11. Guardian consent flow: record → list → verify
+{
+  const vh = `guardian-${Date.now()}`;
+  const created = await api("POST", "/api/consent/guardian", {
+    property_id: "prop_main",
+    visitor_hash: vh,
+    guardian_name: "Test Guardian",
+    relationship: "Parent",
+    contact: "guardian@example.in",
+    consent_given: true,
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.contact_hash.length, 64, "contact_hash must be real SHA-256");
+  assert.ok(!JSON.stringify(created.data).includes("guardian@example.in"), "raw contact must not echo");
+  const rejected = await api("POST", "/api/consent/guardian", {
+    property_id: "prop_main",
+    visitor_hash: vh,
+    guardian_name: "Test Guardian",
+    relationship: "Parent",
+    contact: "guardian@example.in",
+    consent_given: false,
+  });
+  assert.equal(rejected.status, 400);
+  const list = await api("GET", "/api/consent/guardian?property_id=prop_main");
+  assert.ok(list.data.consents.some((g) => g.visitor_hash === vh));
+  const verified = await api("PATCH", `/api/consent/guardian/${created.data.id}`, { action: "verify" });
+  assert.equal(verified.status, 200);
+  assert.ok(verified.data.verified_at);
+  console.log(`  [11] guardian consent recorded + verified (${created.data.id})`);
+}
+
+// 12. Cookie library expanded + snippet has guardian step
+{
+  const cookies = await api("GET", "/api/cookies");
+  assert.ok(cookies.data.cookies.length >= 200, `library should be ~250, got ${cookies.data.cookies.length}`);
+  const snippet = await fetch(`${BASE}/api/consent/snippet`);
+  const js = await snippet.text();
+  assert.match(js.toLowerCase(), /guardian/, "snippet must include the guardian step");
+  console.log(`  [12] cookie library: ${cookies.data.cookies.length} entries; snippet has guardian step`);
+}
+
+// 13. Real notification sending via local mock (Resend-compatible)
+const mockHits = [];
+let mockServer;
+let mockPort;
+{
+  const http = await import("node:http");
+  mockServer = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      mockHits.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(body || "{}") });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: "mock_msg_123" }));
+    });
+  });
+  await new Promise((r) => mockServer.listen(0, "127.0.0.1", r));
+  mockPort = mockServer.address().port;
+
+  const saved = await api("POST", "/api/admin/notifications", {
+    resend_api_key: "re_test_key_abc",
+    resend_from: "dpo@smoke.test",
+    resend_base_url: `http://127.0.0.1:${mockPort}`,
+  });
+  assert.equal(saved.status, 200);
+
+  const opened = await api("POST", "/api/incidents", {
+    title: "Smoke notify test",
+    description: "mock provider test",
+    severity: "low",
+    affected_count: 1,
+  });
+  const bid = opened.data.id;
+  const sent = await api("POST", `/api/incidents/${bid}/notify`, {
+    channel: "user_email",
+    recipient: "user@smoke.test",
+    subject: "Breach notice",
+    message: "test breach message",
+  });
+  assert.equal(sent.data.status, "sent");
+  assert.equal(sent.data.provider_id, "mock_msg_123");
+  assert.equal(mockHits.length, 1);
+  assert.equal(mockHits[0].auth, "Bearer re_test_key_abc");
+  assert.deepEqual(mockHits[0].body.to, ["user@smoke.test"]);
+  assert.equal(mockHits[0].body.subject, "Breach notice");
+
+  // Not configured → honest log-only
+  await api("POST", "/api/admin/notifications", { resend_api_key: "", resend_from: "", resend_base_url: "", whatsapp_webhook_url: "", whatsapp_bearer: "" });
+  const hitsBefore = mockHits.length;
+  const logged = await api("POST", `/api/incidents/${bid}/notify`, {
+    channel: "user_whatsapp",
+    recipient: "+910000000000",
+    message: "test",
+  });
+  assert.equal(logged.data.status, "logged");
+  assert.equal(mockHits.length, hitsBefore, "no provider hit when unconfigured");
+  const status = await api("GET", `/api/incidents/${bid}/notify`);
+  assert.match(status.data.sender_status, /not_configured/);
+  console.log("  [13] notify: sent via mock provider, honest log-only when unconfigured");
+}
+
+// 14. DSR resolution email (sent + logged paths)
+{
+  // Re-configure mock provider
+  await api("POST", "/api/admin/notifications", {
+    resend_api_key: "re_test_key_abc",
+    resend_from: "dpo@smoke.test",
+    resend_base_url: `http://127.0.0.1:${mockPort}`,
+  });
+  const c1 = await api("POST", "/api/requests", {
+    type: "access",
+    requester_name: "Smoke",
+    requester_email: "requester@smoke.test",
+    note: "resolution email test",
+  });
+  const r1 = await api("PATCH", "/api/requests", { id: c1.data.id, status: "resolved", resolution_note: "done" });
+  assert.equal(r1.data.email_status, "sent");
+  assert.equal(mockHits[mockHits.length - 1].body.to[0], "requester@smoke.test");
+
+  await api("POST", "/api/admin/notifications", { resend_api_key: "", resend_from: "", resend_base_url: "" });
+  const c2 = await api("POST", "/api/requests", {
+    type: "access",
+    requester_name: "Smoke",
+    requester_email: "requester2@smoke.test",
+    note: "resolution email test 2",
+  });
+  const r2 = await api("PATCH", "/api/requests", { id: c2.data.id, status: "resolved", resolution_note: "done" });
+  assert.equal(r2.data.email_status, "logged_not_configured");
+  console.log("  [14] DSR resolution email: sent + logged_not_configured paths ok");
+}
+
+// 15. Vendor questionnaire: send → public submit → responded
+{
+  const vendors = await api("GET", "/api/vendors");
+  assert.ok(vendors.data.vendors.length > 0, "need at least one seeded vendor");
+  const vid = vendors.data.vendors[0].id;
+  const sent = await api("POST", `/api/vendors/${vid}/questionnaire`, {});
+  assert.equal(sent.status, 201);
+  assert.ok(sent.data.token.length > 20, "token must be unguessable");
+  const token = sent.data.token;
+  const answers = {
+    data_categories: "names, emails",
+    purposes: "order fulfilment",
+    retention: "3 years",
+    sub_processors: "none",
+    cross_border: "none",
+    security_measures: "encryption at rest",
+    dpa_signed: "yes",
+    dpa_date: "2026-01-15",
+    breach_notification: "within 24 hours",
+    grievance_contact: "dpo@vendor.test",
+    dsr_handling: "via privacy inbox",
+  };
+  const submitted = await api("POST", `/api/q/${token}`, { answers });
+  assert.equal(submitted.status, 201);
+  const dup = await api("POST", `/api/q/${token}`, { answers });
+  assert.equal(dup.status, 409);
+  const badToken = await api("POST", "/api/q/bad_token_xyz", { answers });
+  assert.equal(badToken.status, 404);
+  const latest = await api("GET", `/api/vendors/${vid}/questionnaire`);
+  assert.equal(latest.data.questionnaire.status, "responded");
+  console.log(`  [15] questionnaire: sent → submitted → responded (${token.slice(0, 12)}…)`);
+}
+
+// 16. GitHub code scan (small public repo, unauthenticated)
+{
+  const { status, data } = await api("POST", "/api/scan/github", { owner: "octocat", repo: "Hello-World" });
+  assert.equal(status, 201);
+  assert.ok(data.scan_id, "scan should return a scan_id");
+  console.log(`  [16] github scan ok (${data.files_scanned} files, ${data.fields_found} fields)`);
+}
+
+// 17. Ledger grew and still verifies after all mutations
 {
   const { data } = await api("GET", "/api/evidence?verify=1");
   assert.equal(data.verify.ok, true);
-  console.log(`  [10] chain still valid after mutations (${data.verify.checked} entries)`);
+  console.log(`  [17] chain still valid after mutations (${data.verify.checked} entries)`);
 }
 
+if (mockServer) mockServer.close();
 console.log("\nALL SMOKE TESTS PASSED ✓\n");

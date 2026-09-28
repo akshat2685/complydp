@@ -96,6 +96,7 @@ export function RightsDeskClient({ cases }: { cases: DsrCase[] }) {
   const [showResolve, setShowResolve] = useState(false);
   const [resolutionDraft, setResolutionDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [resolveEmailStatus, setResolveEmailStatus] = useState<string | null>(null);
 
   const selected = cases.find((c) => c.id === selectedId) ?? null;
 
@@ -105,24 +106,28 @@ export function RightsDeskClient({ cases }: { cases: DsrCase[] }) {
     setShowResolve(false);
     setResolutionDraft("");
     setError(null);
+    setResolveEmailStatus(null);
   };
 
   const patchCase = async (id: string, payload: Record<string, unknown>) => {
     setSaving(true);
     setError(null);
+    setResolveEmailStatus(null);
     try {
       const res = await fetch("/api/requests", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, ...payload }),
       });
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
         throw new Error(j.error ?? "Update failed");
       }
       router.refresh();
+      return j as Record<string, unknown>;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
+      return null;
     } finally {
       setSaving(false);
     }
@@ -143,9 +148,19 @@ export function RightsDeskClient({ cases }: { cases: DsrCase[] }) {
 
   const resolveCase = () => {
     if (!selected) return;
-    patchCase(selected.id, { status: "resolved", resolution_note: resolutionDraft.trim() }).then(() => {
+    patchCase(selected.id, { status: "resolved", resolution_note: resolutionDraft.trim() }).then((j) => {
       setShowResolve(false);
+      const s = j?.email_status;
+      if (typeof s === "string" && s) setResolveEmailStatus(s);
     });
+  };
+
+  const emailStatusLabel = (s: string) => {
+    if (s === "sent") return "Resolution email sent";
+    if (s === "logged_not_configured") return "Resolution logged only — no email sender configured";
+    if (s === "no_email_on_file") return "No email on file — requester not notified";
+    if (s.startsWith("failed")) return `Resolution email failed (${s.slice(8)})`;
+    return `Email: ${s}`;
   };
 
   const doneCount = (c: DsrCase) => c.tasks.filter((t) => t.done).length;
@@ -260,6 +275,15 @@ export function RightsDeskClient({ cases }: { cases: DsrCase[] }) {
                   {selected.resolution_note && (
                     <div className="mt-1.5 text-[13px] text-ink-soft bg-paper border border-hairline rounded p-3">
                       {selected.resolution_note}
+                    </div>
+                  )}
+                  {resolveEmailStatus && (
+                    <div
+                      className={`mt-2 text-[12px] font-medium ${
+                        resolveEmailStatus === "sent" ? "text-status-green" : "text-status-amber"
+                      }`}
+                    >
+                      {emailStatusLabel(resolveEmailStatus)}
                     </div>
                   )}
                 </div>

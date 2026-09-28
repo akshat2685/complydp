@@ -98,6 +98,21 @@ CREATE TABLE IF NOT EXISTS consent_events (
 CREATE INDEX IF NOT EXISTS idx_consent_visitor ON consent_events(visitor_hash);
 CREATE INDEX IF NOT EXISTS idx_consent_created ON consent_events(created_at);
 
+CREATE TABLE IF NOT EXISTS guardian_consents (
+  id TEXT PRIMARY KEY,
+  property_id TEXT NOT NULL REFERENCES properties(id),
+  visitor_hash TEXT NOT NULL,
+  guardian_name TEXT NOT NULL,
+  relationship TEXT NOT NULL,
+  contact TEXT NOT NULL,
+  contact_hash TEXT NOT NULL,
+  consent_given INTEGER NOT NULL DEFAULT 0,
+  verified_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_guardian_visitor ON guardian_consents(visitor_hash);
+CREATE INDEX IF NOT EXISTS idx_guardian_created ON guardian_consents(created_at);
+
 CREATE TABLE IF NOT EXISTS dsr_cases (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
@@ -141,7 +156,9 @@ CREATE TABLE IF NOT EXISTS breach_comms (
   body TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'queued',
   created_at TEXT NOT NULL,
-  sent_at TEXT
+  sent_at TEXT,
+  provider_id TEXT,
+  provider_response TEXT
 );
 
 CREATE TABLE IF NOT EXISTS vendors (
@@ -157,6 +174,23 @@ CREATE TABLE IF NOT EXISTS vendors (
   discovered_via TEXT NOT NULL DEFAULT 'manual',
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS questionnaires (
+  id TEXT PRIMARY KEY,
+  vendor_id TEXT REFERENCES vendors(id),
+  token TEXT UNIQUE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'sent',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_questionnaires_vendor ON questionnaires(vendor_id);
+
+CREATE TABLE IF NOT EXISTS questionnaire_responses (
+  id TEXT PRIMARY KEY,
+  questionnaire_id TEXT REFERENCES questionnaires(id),
+  answers_json TEXT NOT NULL,
+  submitted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_qresponses_questionnaire ON questionnaire_responses(questionnaire_id);
 
 CREATE TABLE IF NOT EXISTS systems (
   id TEXT PRIMARY KEY,
@@ -237,11 +271,23 @@ CREATE TABLE IF NOT EXISTS notices (
 
 function migrate(db: DatabaseSync) {
   db.exec(SCHEMA);
+  ensureBreachCommsProviderColumns(db);
   // Seed when the tenant table is empty.
   const row = db.prepare("SELECT COUNT(*) AS n FROM tenant").get() as { n: number };
   if (row.n === 0) {
     seed(db);
   }
+}
+
+/**
+ * Idempotent column migration for breach_comms: existing DBs created before
+ * the provider-tracking columns existed get them via ALTER TABLE.
+ */
+function ensureBreachCommsProviderColumns(db: DatabaseSync) {
+  const cols = db.prepare("PRAGMA table_info(breach_comms)").all() as Array<{ name: string }>;
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has("provider_id")) db.exec("ALTER TABLE breach_comms ADD COLUMN provider_id TEXT");
+  if (!names.has("provider_response")) db.exec("ALTER TABLE breach_comms ADD COLUMN provider_response TEXT");
 }
 
 /* ------------------------------------------------------------------ */

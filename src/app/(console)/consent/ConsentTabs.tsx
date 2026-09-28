@@ -1,18 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Code2, SlidersHorizontal, Radar, ScrollText } from "lucide-react";
+import { Code2, SlidersHorizontal, Radar, ScrollText, ShieldCheck } from "lucide-react";
 import { InstallTab } from "./tabs/InstallTab";
 import { ConfigureTab } from "./tabs/ConfigureTab";
 import { ScanTab } from "./tabs/ScanTab";
 import { LogsTab } from "./tabs/LogsTab";
-import type { ConsentSettings, CookieRow, ConsentEvent } from "./types";
+import { GuardiansTab } from "./tabs/GuardiansTab";
+import type { ConsentSettings, CookieRow, ConsentEvent, GuardianConsent } from "./types";
 
 const TABS = [
   { id: "install", label: "Install", icon: Code2 },
   { id: "configure", label: "Configure", icon: SlidersHorizontal },
   { id: "scan", label: "Cookie scan", icon: Radar },
   { id: "logs", label: "Consent logs", icon: ScrollText },
+  { id: "guardians", label: "Guardians", icon: ShieldCheck },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -21,11 +23,13 @@ export function ConsentTabs({
   settings,
   cookies,
   events,
+  guardians,
   snippetUrl,
 }: {
   settings: ConsentSettings;
   cookies: CookieRow[];
   events: ConsentEvent[];
+  guardians: GuardianConsent[];
   snippetUrl: string;
 }) {
   const [tab, setTab] = useState<TabId>("install");
@@ -36,6 +40,7 @@ export function ConsentTabs({
         {TABS.map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
+          const count = t.id === "logs" ? events.length : t.id === "guardians" ? guardians.length : 0;
           return (
             <button
               key={t.id}
@@ -50,9 +55,9 @@ export function ConsentTabs({
             >
               <Icon className="w-4 h-4" strokeWidth={active ? 2.2 : 1.8} />
               {t.label}
-              {t.id === "logs" && events.length > 0 && (
+              {(t.id === "logs" || t.id === "guardians") && count > 0 && (
                 <span className="font-mono text-[10.5px] font-bold bg-paper-deep border border-hairline-strong rounded-full px-1.5">
-                  {events.length}
+                  {count}
                 </span>
               )}
             </button>
@@ -64,6 +69,7 @@ export function ConsentTabs({
       {tab === "configure" && <ConfigureTab initial={settings} />}
       {tab === "scan" && <ScanTab initialCookies={cookies} />}
       {tab === "logs" && <LogsTab events={events} />}
+      {tab === "guardians" && <GuardiansTab initial={guardians} />}
     </div>
   );
 }

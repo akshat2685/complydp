@@ -98,7 +98,12 @@ export function ScanTab({ initialCookies }: { initialCookies: CookieRow[] }) {
 
       <Card pad={false}>
         <div className="p-5 pb-3 flex items-center justify-between">
-          <CardTitle>Cookie inventory</CardTitle>
+          <div>
+            <CardTitle>Cookie inventory</CardTitle>
+            <p className="text-[11.5px] text-ink-muted mt-1">
+              Known-cookie library: {initialCookies.length} entries
+            </p>
+          </div>
           <button className="btn btn-line btn-sm" onClick={() => setShowAdd(!showAdd)}>
             <Plus className="w-3.5 h-3.5" /> Add manually
           </button>

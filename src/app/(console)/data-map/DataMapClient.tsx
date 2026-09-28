@@ -582,16 +582,22 @@ function DiscoverySection() {
             auto-registers the tracker vendors it finds.
           </p>
           <p>
-            <strong className="text-ink">Codebase scanning</strong> (reading GitHub repos for
-            personal-data fields) needs a GitHub token — connect one in{" "}
-            <a href="/settings" className="text-teal font-semibold hover:underline">Settings</a>.
-            It is not wired in this MVP. Until then, register codebases manually in the Systems
-            section above and add the fields they touch.
+            <strong className="text-ink">Codebase scanning</strong> is now a real scan via{" "}
+            <span className="font-mono text-[12px]">POST /api/scan/github</span>: it walks up to
+            200 text files in a repo, runs the rule-based PII classifier over file paths and code
+            identifiers, and records matches in Data fields and Findings. Connect a token in{" "}
+            <a href="/settings" className="text-teal font-semibold hover:underline">Settings</a>{" "}
+            for private repos and higher limits — without one, public repos scan unauthenticated
+            (60 req/hr).
           </p>
           <p>
-            <strong className="text-ink">Connected systems</strong> (Shopify, on-prem databases
-            via Docker, and similar connectors) are also manual entries in this build — each one is
-            labelled as such on the register, never presented as a live sync.
+            <strong className="text-ink">Questionnaires</strong> are now real too — structured
+            discovery questionnaires sent to system owners feed their answers into the register.
+          </p>
+          <p>
+            <strong className="text-ink">Connected systems</strong> (SaaS integrations, on-prem
+            databases via Docker, and similar connectors) are still manual entries in this build —
+            each one is labelled as such on the register, never presented as a live sync.
           </p>
         </div>
       </Card>

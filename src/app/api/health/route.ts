@@ -1,4 +1,5 @@
 import { db, ok, ledgerVerify } from "@/server/api";
+import { readGithubToken } from "@/server/github";
 
 export async function GET() {
   let database = "unreachable";
@@ -27,7 +28,9 @@ export async function GET() {
       evidence_chain: "sha256, verified on boot",
       cookie_scan: "static server-side fetch (no JS execution)",
       pii_classification: "rule-based keyword engine (not ML)",
-      github_scan: "manual — token required, not configured in MVP seed",
+      github_scan: readGithubToken()
+        ? "real — token configured (5k req/hr)"
+        : "real — optional, unauthenticated public-repo scans (60 req/hr)",
       notifications: "logged only — no real email/SMS sender wired",
     },
   });

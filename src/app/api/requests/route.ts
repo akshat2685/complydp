@@ -1,4 +1,5 @@
 import { db, ok, bad, body, record, newId, nowIso, parseJson } from "@/server/api";
+import { sendEmail } from "@/server/notify";
 
 const DSR_TYPES = ["access", "correction", "deletion", "disclosure"] as const;
 const SLA_HOURS: Record<string, number> = { access: 72, correction: 72, deletion: 72, disclosure: 72 };
@@ -83,5 +84,58 @@ export async function PATCH(req: Request) {
     status: b.status ?? row.status,
     assignee: b.assignee ?? row.assignee,
   });
-  return ok({ id: b.id });
+
+  // DSR resolution notification: on a transition TO resolved, notify the
+  // requester by email when an address is on file. The send never fails the
+  // resolution itself — failures are caught, marked, and logged as evidence.
+  let email_status: string | null = null;
+  if (b.status === "resolved" && row.status !== "resolved") {
+    const to = ((row.requester_email as string) ?? "").trim();
+    const resolutionNote =
+      typeof b.resolution_note === "string"
+        ? b.resolution_note
+        : ((row.resolution_note as string) ?? "");
+    if (to) {
+      const subject = `Your privacy request ${b.id} — resolved`;
+      const emailBody = [
+        `Your privacy request ${b.id} has been resolved.`,
+        "",
+        resolutionNote.trim()
+          ? `Resolution: ${resolutionNote.trim()}`
+          : "Our team has completed the work on your request.",
+      ].join("\n");
+      try {
+        const r = await sendEmail(to, subject, emailBody);
+        if (r.status === "sent") {
+          email_status = "sent";
+          record("dsr.resolution_notified", "dsr_case", b.id,
+            `Resolution email sent to ${to} for ${b.id}`,
+            { email_status: "sent", provider_id: r.provider_id ?? null }, "dpo");
+        } else if (r.status === "not_configured") {
+          email_status = "logged_not_configured";
+          record("dsr.resolution_notified", "dsr_case", b.id,
+            `Resolution for ${b.id} logged as evidence only — no email sender configured`,
+            { email_status: "not_configured" }, "dpo");
+        } else {
+          email_status = `failed: ${r.error ?? "send failed"}`;
+          record("dsr.resolution_notified", "dsr_case", b.id,
+            `Resolution email to ${to} for ${b.id} failed`,
+            { email_status: "failed", error: r.error ?? "send failed" }, "dpo");
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "send error";
+        email_status = `failed: ${msg}`;
+        record("dsr.resolution_notified", "dsr_case", b.id,
+          `Resolution email to ${to} for ${b.id} failed`,
+          { email_status: "failed", error: msg }, "dpo");
+      }
+    } else {
+      email_status = "no_email_on_file";
+      record("dsr.resolution_notified", "dsr_case", b.id,
+        `Resolution for ${b.id} completed — no requester email on file, nothing sent`,
+        { email_status: "no_email_on_file" }, "dpo");
+    }
+  }
+
+  return ok({ id: b.id, email_status });
 }

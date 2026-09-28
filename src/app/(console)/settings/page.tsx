@@ -1,7 +1,10 @@
 import { db, parseJson } from "@/server/db";
 import { GET as healthCheck } from "@/app/api/health/route";
-import { PageHead, Card, CardTitle, Chip } from "@/components/ui";
+import { PageHead, Card, CardTitle } from "@/components/ui";
 import { DangerZone } from "./DangerZone";
+import { NotificationSettings, NotificationChip } from "./NotificationSettings";
+import { GitHubSettings } from "./GitHubSettings";
+import { maskToken, readGithubToken } from "@/server/github";
 
 interface Capabilities {
   persistence: string;
@@ -35,6 +38,9 @@ export default async function SettingsPage() {
   const healthRes = await healthCheck();
   const health = (await healthRes.json()) as { capabilities: Capabilities; evidence_ledger: { entries: number; chain: string } };
   const caps = health.capabilities;
+
+  const ghToken = readGithubToken();
+  const ghInitial = { configured: !!ghToken, masked: ghToken ? maskToken(ghToken) : null };
 
   return (
     <div>
@@ -72,31 +78,24 @@ export default async function SettingsPage() {
         <Card>
           <CardTitle
             right={
-              <Chip tone="amber">not configured</Chip>
+              <NotificationChip />
             }
           >
             Notifications
           </CardTitle>
-          <p className="text-[12.5px] text-ink-muted mb-4">
-            No email, SMS or WhatsApp sender is wired up yet. Breach notifications are{" "}
-            <span className="font-semibold text-ink">logged as evidence only</span> — who was
-            notified, through which channel, and when — so the record is complete even before a
-            sender exists.
-          </p>
-          <div className="space-y-3 opacity-60" aria-disabled="true">
-            <div>
-              <label className="kicker block mb-1.5">SMTP host</label>
-              <input className="field" placeholder="smtp.example.in" disabled />
-            </div>
-            <div>
-              <label className="kicker block mb-1.5">Sender API key</label>
-              <input className="field" placeholder="coming next — connect a provider" disabled type="password" />
-            </div>
-          </div>
+          <NotificationSettings />
           <p className="text-[11.5px] text-ink-faint mt-3">
-            Coming next: connect SendGrid / SES / a WhatsApp provider here.
+            Real now: Resend for email and a WhatsApp webhook. When a breach notification is
+            triggered, it is genuinely sent through the configured provider and the provider's
+            message id is stored as evidence. With no provider configured, notifications stay
+            logged as evidence only.
           </p>
         </Card>
+      </div>
+
+      {/* GitHub connection */}
+      <div className="mt-5">
+        <GitHubSettings initial={ghInitial} />
       </div>
 
       {/* Capabilities — the honest list */}
