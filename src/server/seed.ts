@@ -5,7 +5,7 @@
  * brand. All people, events and numbers are invented for the demo — the
  * plumbing (hash chains, persistence, scanners) is real.
  */
-import { newId, nowIso, sha256, ledgerAppend, consentAppend, runC } from "./db";
+import { newId, nowIso, sha256, runC } from "./db";
 import type { Client } from "@libsql/client";
 
 const H = (s: string) => sha256(s).slice(0, 16);
@@ -383,18 +383,25 @@ export async function seedDemoTenant(client: Client) {
     ["under18", { necessary: true, functional: false, analytics: false, marketing: false }, "age_gate", "2h"],
   ];
   // Insert oldest-first so the chain builds in chronological order.
+  // The chain is computed locally from the hashes we create (not by
+  // re-reading the DB), so the seed is immune to read-after-write
+  // visibility quirks on first boot against a fresh remote database.
+  // The hash does not cover created_at, so the backdated timestamp can be
+  // used directly in both the hash and the row — no UPDATE needed.
+  let consentPrev = "GENESIS";
   for (const [band, cats, mode, ago] of [...consentModes].reverse()) {
-    // Temporarily backdate: consentAppend uses nowIso; we insert then fix created_at.
-    const { id } = await consentAppend({
-      property_id: "prop_main",
-      visitor_hash: H("visitor-" + Math.random().toString(36).slice(2)),
-      age_band: band,
-      categories: cats,
-      consent_mode: mode,
-      notice_version: "v2.3",
-    }, client);
     const when = ago.endsWith("d") ? daysAgo(parseInt(ago)) : hoursAgo(parseInt(ago));
-    await run("UPDATE consent_events SET created_at = ? WHERE id = ?", when, id);
+    const catsJson = JSON.stringify(cats);
+    const visitorHash = H("visitor-" + Math.random().toString(36).slice(2));
+    const id = newId("cev");
+    const payload = [consentPrev, when, "prop_main", visitorHash, band, catsJson, mode, "v2.3"].join("|");
+    const hash = sha256(payload);
+    await run(
+      `INSERT INTO consent_events (id, property_id, visitor_hash, age_band, categories_json, consent_mode, notice_version, created_at, prev_hash, event_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, "prop_main", visitorHash, band, catsJson, mode, "v2.3", when, consentPrev, hash
+    );
+    consentPrev = hash;
   }
 
   /* ---------------- DSR cases ---------------- */
@@ -545,16 +552,34 @@ export async function seedDemoTenant(client: Client) {
   );
 
   /* ---------------- Seed ledger entries (chained) ---------------- */
-  const L = async (action: string, et: string, eid: string, summary: string, details: Record<string, unknown>, actor = "system") =>
-    ledgerAppend({ actor, action, entity_type: et, entity_id: eid, summary, details }, client);
-  await L("tenant.created", "tenant", "tenant_meridian", "Tenant workspace created for Meridian Foods Pvt. Ltd.", { domain: "meridianfoods.in" });
-  await L("notice.published", "notice", "v2.3", "Privacy Notice v2.3 published", { version: "v2.3" }, "Rudra Pratap Dalei");
-  await L("scan.completed", "scan", "cookie", `Cookie scan completed: ${cookies.length} cookies across 14 pages`, { cookies: cookies.length, pages: 14 });
-  await L("consent.config_updated", "property", "prop_main", "Age-gating enabled; under-18 visitors get necessary-only mode", { age_gating: true }, "Rudra Pratap Dalei");
-  await L("dsr.received", "dsr_case", "DSR-2026-0041", "Access request received from Ananya Iyer", { channel: "hosted_form" });
-  await L("dsr.received", "dsr_case", "DSR-2026-0042", "Deletion request received from Vikram Malhotra", { channel: "hosted_form" });
-  await L("dsr.resolved", "dsr_case", "DSR-2026-0039", "Correction request resolved: phone number updated", {}, "Rudra Pratap Dalei");
-  await L("breach.opened", "breach_case", "breach_001", "Breach BR-2026-0117 opened: support export misdirected", { affected: 1240, severity: "high" }, "Rudra Pratap Dalei");
-  await L("breach.step_advanced", "breach_case", "breach_001", "Breach moved to step 2: clocks started (72h Board, user notice)", { step: 1 });
-  await L("finding.resolved", "finding", "notice-v2.3", "Finding resolved: cookie policy page updated to v2.3", {}, "Rudra Pratap Dalei");
+  // The chain is computed locally from the hashes we create (not by
+  // re-reading the DB), so the seed is immune to read-after-write
+  // visibility quirks on first boot against a fresh remote database.
+  // Payload layout mirrors ledgerAppend exactly: prev|ts|actor|action|
+  // entity_type|entity_id|summary|details_json.
+  const LEDGER_SEED: Array<[string, string, string, string, Record<string, unknown>, string]> = [
+    ["tenant.created", "tenant", "tenant_meridian", "Tenant workspace created for Meridian Foods Pvt. Ltd.", { domain: "meridianfoods.in" }, "system"],
+    ["notice.published", "notice", "v2.3", "Privacy Notice v2.3 published", { version: "v2.3" }, "Rudra Pratap Dalei"],
+    ["scan.completed", "scan", "cookie", `Cookie scan completed: ${cookies.length} cookies across 14 pages`, { cookies: cookies.length, pages: 14 }, "system"],
+    ["consent.config_updated", "property", "prop_main", "Age-gating enabled; under-18 visitors get necessary-only mode", { age_gating: true }, "Rudra Pratap Dalei"],
+    ["dsr.received", "dsr_case", "DSR-2026-0041", "Access request received from Ananya Iyer", { channel: "hosted_form" }, "system"],
+    ["dsr.received", "dsr_case", "DSR-2026-0042", "Deletion request received from Vikram Malhotra", { channel: "hosted_form" }, "system"],
+    ["dsr.resolved", "dsr_case", "DSR-2026-0039", "Correction request resolved: phone number updated", {}, "Rudra Pratap Dalei"],
+    ["breach.opened", "breach_case", "breach_001", "Breach BR-2026-0117 opened: support export misdirected", { affected: 1240, severity: "high" }, "Rudra Pratap Dalei"],
+    ["breach.step_advanced", "breach_case", "breach_001", "Breach moved to step 2: clocks started (72h Board, user notice)", { step: 1 }, "system"],
+    ["finding.resolved", "finding", "notice-v2.3", "Finding resolved: cookie policy page updated to v2.3", {}, "Rudra Pratap Dalei"],
+  ];
+  let ledgerPrev = "GENESIS";
+  for (const [action, et, eid, summary, details, actor] of LEDGER_SEED) {
+    const ts = nowIso();
+    const detailsJson = JSON.stringify(details);
+    const payload = [ledgerPrev, ts, actor, action, et, eid, summary, detailsJson].join("|");
+    const hash = sha256(payload);
+    await run(
+      `INSERT INTO evidence_ledger (ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ts, actor, action, et, eid, summary, detailsJson, ledgerPrev, hash
+    );
+    ledgerPrev = hash;
+  }
 }

@@ -402,9 +402,30 @@ async function migrate(client: Client) {
   // Seed when the tenant table is empty.
   const rs = await client.execute("SELECT COUNT(*) AS n FROM tenant");
   const n = Number((rs.rows[0] as unknown as { n: unknown } | undefined)?.n ?? 0);
-  if (n === 0) {
-    await seedDemoTenant(client);
+  if (n === 0 && (await claimSeed(client))) {
+    try {
+      await seedDemoTenant(client);
+    } catch (e) {
+      // Release the claim so a later boot retries instead of serving half-seeded data.
+      await client.execute("DELETE FROM _seed_claim WHERE id = 1");
+      throw e;
+    }
+    // Fail fast: the seed just built hash chains. A broken chain here means the
+    // seed misfired, and booting would serve a corrupt evidence ledger.
+    const v = await ledgerVerifyClient(client);
+    if (!v.ok) throw new Error(`seed produced a broken evidence chain (broken at seq ${v.brokenAt})`);
   }
+}
+
+/**
+ * Atomic seed claim: INSERT OR IGNORE wins for exactly one process, so
+ * concurrent boots (build prerender workers + runtime, or two replicas)
+ * can never double-seed. The mkdir file lock only covers same-machine.
+ */
+async function claimSeed(client: Client): Promise<boolean> {
+  await client.execute("CREATE TABLE IF NOT EXISTS _seed_claim (id INTEGER PRIMARY KEY CHECK (id = 1))");
+  const rs = await client.execute("INSERT OR IGNORE INTO _seed_claim (id) VALUES (1)");
+  return Number(rs.rowsAffected ?? 0) === 1;
 }
 
 /**
@@ -447,6 +468,25 @@ export function parseJson<T>(raw: string | null, fallback: T): T {
 /* ------------------------------------------------------------------ */
 /*  Evidence ledger — real SHA-256 hash chain.                         */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Serializes hash-chained appends within this process: every append is a
+ * read-last-hash → insert pair, and concurrent requests must not interleave
+ * that pair or the chain forks.
+ */
+let _appendChain: Promise<void> = Promise.resolve();
+async function withAppendLock<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = _appendChain;
+  let release!: () => void;
+  _appendChain = new Promise<void>((r) => { release = r; });
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 export async function ledgerAppend(entry: {
   actor: string;
   action: string;
@@ -455,6 +495,7 @@ export async function ledgerAppend(entry: {
   summary: string;
   details?: Record<string, unknown>;
 }, client?: Client): Promise<{ seq: number; entry_hash: string }> {
+  return withAppendLock(async () => {
   const c = client ?? (await db());
   const last = await qC<{ entry_hash: string }>(
     c,
@@ -473,14 +514,17 @@ export async function ledgerAppend(entry: {
     [ts, entry.actor, entry.action, entry.entity_type, entry.entity_id, entry.summary, details, prev, hash]
   );
   return { seq: res.lastInsertRowid, entry_hash: hash };
+  });
 }
 
-export async function ledgerVerify(): Promise<{ ok: boolean; checked: number; brokenAt?: number }> {
-  const rows = await q<{
+export async function ledgerVerifyClient(client: Client): Promise<{ ok: boolean; checked: number; brokenAt?: number }> {
+  const rows = await qC<{
     seq: number; ts: string; actor: string; action: string; entity_type: string;
     entity_id: string; summary: string; details_json: string; prev_hash: string; entry_hash: string;
   }>(
-    "SELECT seq, ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash FROM evidence_ledger ORDER BY seq ASC"
+    client,
+    "SELECT seq, ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash FROM evidence_ledger ORDER BY seq ASC",
+    []
   );
   let prev = "GENESIS";
   for (const r of rows) {
@@ -492,6 +536,10 @@ export async function ledgerVerify(): Promise<{ ok: boolean; checked: number; br
   return { ok: true, checked: rows.length };
 }
 
+export async function ledgerVerify(): Promise<{ ok: boolean; checked: number; brokenAt?: number }> {
+  return ledgerVerifyClient(await db());
+}
+
 /* Consent events use the same chaining idea, scoped per property. */
 export async function consentAppend(ev: {
   property_id: string;
@@ -501,6 +549,7 @@ export async function consentAppend(ev: {
   consent_mode: string;
   notice_version: string;
 }, client?: Client): Promise<{ id: string; event_hash: string }> {
+  return withAppendLock(async () => {
   const c = client ?? (await db());
   const last = await qC<{ event_hash: string }>(
     c,
@@ -520,6 +569,7 @@ export async function consentAppend(ev: {
     [id, ev.property_id, ev.visitor_hash, ev.age_band, cats, ev.consent_mode, ev.notice_version, ts, prev, hash]
   );
   return { id, event_hash: hash };
+  });
 }
 
 /* ------------------------------------------------------------------ */
