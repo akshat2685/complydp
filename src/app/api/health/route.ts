@@ -21,6 +21,11 @@ export async function GET() {
     framework: "Digital Personal Data Protection Act, 2023",
     timestamp: new Date().toISOString(),
     database,
+    auth: process.env.PRAMAAN_ADMIN_KEY
+      ? "required — console and API gated"
+      : process.env.NODE_ENV === "production"
+        ? "NOT CONFIGURED — set PRAMAAN_ADMIN_KEY"
+        : "open (dev mode, no key set)",
     evidence_ledger: ledger,
     // What this build honestly does and does not do:
     capabilities: {
