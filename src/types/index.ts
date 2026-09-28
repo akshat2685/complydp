@@ -232,7 +232,7 @@ export interface Tenant {
   regulatoryFramework: string;
 }
 
-export interface ComplyDPState {
+export interface PramaanState {
   tenant: Tenant;
   webProperty: WebProperty;
   findings: Finding[];

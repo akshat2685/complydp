@@ -1,0 +1,69 @@
+"use client";
+
+import { useState } from "react";
+import { Code2, SlidersHorizontal, Radar, ScrollText } from "lucide-react";
+import { InstallTab } from "./tabs/InstallTab";
+import { ConfigureTab } from "./tabs/ConfigureTab";
+import { ScanTab } from "./tabs/ScanTab";
+import { LogsTab } from "./tabs/LogsTab";
+import type { ConsentSettings, CookieRow, ConsentEvent } from "./types";
+
+const TABS = [
+  { id: "install", label: "Install", icon: Code2 },
+  { id: "configure", label: "Configure", icon: SlidersHorizontal },
+  { id: "scan", label: "Cookie scan", icon: Radar },
+  { id: "logs", label: "Consent logs", icon: ScrollText },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+export function ConsentTabs({
+  settings,
+  cookies,
+  events,
+  snippetUrl,
+}: {
+  settings: ConsentSettings;
+  cookies: CookieRow[];
+  events: ConsentEvent[];
+  snippetUrl: string;
+}) {
+  const [tab, setTab] = useState<TabId>("install");
+
+  return (
+    <div>
+      <div className="flex gap-1 border-b border-hairline-strong mb-6" role="tablist">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-colors ${
+                active
+                  ? "border-seal text-ink"
+                  : "border-transparent text-ink-muted hover:text-ink"
+              }`}
+            >
+              <Icon className="w-4 h-4" strokeWidth={active ? 2.2 : 1.8} />
+              {t.label}
+              {t.id === "logs" && events.length > 0 && (
+                <span className="font-mono text-[10.5px] font-bold bg-paper-deep border border-hairline-strong rounded-full px-1.5">
+                  {events.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "install" && <InstallTab snippetUrl={snippetUrl} />}
+      {tab === "configure" && <ConfigureTab initial={settings} />}
+      {tab === "scan" && <ScanTab initialCookies={cookies} />}
+      {tab === "logs" && <LogsTab events={events} />}
+    </div>
+  );
+}

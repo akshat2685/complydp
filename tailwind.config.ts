@@ -1,5 +1,10 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Pramaan design tokens — "The Registry" aesthetic.
+ * Warm paper, ink text, hairline rules, serif display type,
+ * monospace for evidence/ids, one signature vermilion seal-red.
+ */
 const config: Config = {
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,62 +14,75 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#f8f9fa",
-        panel: "#ffffff",
-        border: "#e2e8f0",
-        "border-subtle": "#edf2f7",
-        "border-strong": "#cbd5e1",
-        primary: {
-          50: "#eff6ff",
-          100: "#dbeafe",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-          800: "#1e40af",
-          900: "#1e3a8a",
+        paper: {
+          DEFAULT: "#f6f4ee",
+          deep: "#efebe1",
+          panel: "#fffdf8",
         },
-        slate: {
-          850: "#151e2e",
-          950: "#0b0f19",
+        ink: {
+          DEFAULT: "#1c1a17",
+          soft: "#3d3831",
+          muted: "#6f675c",
+          faint: "#a39e93",
         },
-        privacy: {
-          amber: "#d97706",
-          amberBg: "#fef3c7",
-          crimson: "#dc2626",
-          crimsonBg: "#fee2e2",
-          emerald: "#059669",
-          emeraldBg: "#d1fae5",
-          sky: "#0284c7",
-          skyBg: "#e0f2fe",
-          indigo: "#4f46e5",
-          indigoBg: "#e0e7ff",
+        hairline: {
+          DEFAULT: "#e5dfd2",
+          strong: "#d3cbb6",
+        },
+        seal: {
+          DEFAULT: "#a33327",
+          dark: "#7e251c",
+          bg: "#f9e9e5",
+        },
+        teal: {
+          DEFAULT: "#0e5c55",
+          dark: "#0a443f",
+          bg: "#e4efec",
+        },
+        status: {
+          amber: "#b45309",
+          amberBg: "#faf0dc",
+          red: "#b91c1c",
+          redBg: "#fbe7e3",
+          green: "#1d7a4f",
+          greenBg: "#e2f2e8",
+          blue: "#1d5fa8",
+          blueBg: "#e3eefb",
         },
       },
       fontFamily: {
+        display: [
+          "Georgia",
+          '"Iowan Old Style"',
+          '"Palatino Linotype"',
+          "Palatino",
+          '"Times New Roman"',
+          "serif",
+        ],
+        sans: [
+          "-apple-system",
+          "BlinkMacSystemFont",
+          '"Segoe UI"',
+          "Roboto",
+          '"Helvetica Neue"',
+          "Arial",
+          "sans-serif",
+        ],
         mono: [
           "ui-monospace",
           "SFMono-Regular",
           "Menlo",
           "Monaco",
           "Consolas",
-          "Liberation Mono",
-          "Courier New",
+          '"Liberation Mono"',
+          '"Courier New"',
           "monospace",
-        ],
-        sans: [
-          "-apple-system",
-          "BlinkMacSystemFont",
-          "Segoe UI",
-          "Roboto",
-          "Helvetica Neue",
-          "Arial",
-          "sans-serif",
         ],
       },
       boxShadow: {
-        subtle: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
-        card: "0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06)",
-        drawer: "-4px 0 24px rgba(0, 0, 0, 0.12)",
+        card: "0 1px 2px 0 rgba(28, 26, 23, 0.05)",
+        raised: "0 4px 14px -4px rgba(28, 26, 23, 0.12)",
+        drawer: "-8px 0 32px rgba(28, 26, 23, 0.14)",
       },
     },
   },
