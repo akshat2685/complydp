@@ -4,7 +4,9 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui";
 
-export function InstallTab({ snippetUrl }: { snippetUrl: string }) {
+import type { BannerCfg } from "../types";
+
+export function InstallTab({ snippetUrl, banner }: { snippetUrl: string; banner: BannerCfg }) {
   const [copied, setCopied] = useState(false);
   const tag = `<script src="${snippetUrl}" defer></script>`;
 
@@ -77,7 +79,7 @@ export function InstallTab({ snippetUrl }: { snippetUrl: string }) {
             This is the banner your visitors see — rendered here from the same
             configuration the snippet fetches.
           </p>
-          <BannerPreview />
+          <BannerPreview banner={banner} />
           <p className="text-[11.5px] text-ink-faint mt-3 font-mono">
             Preview only — choices made here are not recorded.
           </p>
@@ -87,15 +89,14 @@ export function InstallTab({ snippetUrl }: { snippetUrl: string }) {
   );
 }
 
-function BannerPreview() {
+function BannerPreview({ banner }: { banner: BannerCfg }) {
   const [custom, setCustom] = useState(false);
   const [cats, setCats] = useState({ functional: false, analytics: false, marketing: false });
   return (
     <div className="border border-hairline-strong rounded-md bg-paper-panel p-4 shadow-card text-[13px]">
-      <div className="font-display text-[16px] font-bold mb-1.5">We value your privacy</div>
+      <div className="font-display text-[16px] font-bold mb-1.5">{banner.title}</div>
       <p className="text-ink-muted mb-3 text-[12.5px]">
-        Meridian Foods uses cookies to run the store, remember your cart and — with
-        your permission — measure and personalise.
+        {banner.text}
       </p>
       {custom && (
         <div className="border-t border-dashed border-hairline py-2.5 mb-1 space-y-2">

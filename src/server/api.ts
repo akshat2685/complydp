@@ -1,8 +1,8 @@
 /** Shared helpers for API routes. */
 import { NextResponse } from "next/server";
-import { db, q, qOne, run, IS_REMOTE, ledgerAppend, ledgerVerify, nowIso, newId, parseJson } from "@/server/db";
+import { db, q, qOne, run, IS_REMOTE, ledgerAppend, ledgerVerify, nowIso, newId, parseJson, getTenantId, getDefaultPropertyId } from "@/server/db";
 
-export { db, q, qOne, run, IS_REMOTE, ledgerAppend, ledgerVerify, nowIso, newId, parseJson };
+export { db, q, qOne, run, IS_REMOTE, ledgerAppend, ledgerVerify, nowIso, newId, parseJson, getTenantId, getDefaultPropertyId };
 
 export function ok(data: unknown, status = 200) {
   return NextResponse.json(data, { status });

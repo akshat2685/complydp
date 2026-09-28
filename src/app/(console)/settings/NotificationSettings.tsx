@@ -149,7 +149,7 @@ export function NotificationSettings() {
           <label className="kicker block mb-1.5 mt-3">Sender identity</label>
           <input
             className="field"
-            placeholder="dpo@meridian.example"
+            placeholder="dpo@yourcompany.com"
             value={form.resend_from}
             onChange={set("resend_from")}
           />

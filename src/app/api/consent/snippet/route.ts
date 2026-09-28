@@ -46,7 +46,7 @@ const SNIPPET = `(function () {
       "font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.5;";
   }
 
-  function render(banner, settings) {
+  function render(banner, settings, propertyId) {
     if (seen()) return;
     var box = document.createElement("div");
     box.setAttribute("role", "dialog");
@@ -152,7 +152,7 @@ const SNIPPET = `(function () {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            property_id: "prop_main",
+            property_id: propertyId || undefined,
             visitor_hash: vid(),
             guardian_name: name,
             relationship: rel,
@@ -193,7 +193,8 @@ const SNIPPET = `(function () {
       .then(function (r) { return r.json(); })
       .then(function (cfg) {
         var s = (cfg.tenant && cfg.tenant.settings) || {};
-        render(s.banner || { title: "We value your privacy", text: "", accept_label: "Accept all", reject_label: "Reject non-essential", customize_label: "Customise" }, s);
+        var propId = (cfg.property && cfg.property.id) || "";
+        render(s.banner || { title: "We value your privacy", text: "", accept_label: "Accept all", reject_label: "Reject non-essential", customize_label: "Customise" }, s, propId);
       })
       .catch(function () {});
   }

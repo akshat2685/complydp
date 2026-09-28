@@ -1,4 +1,4 @@
-import { q, run, ok, bad, body, record, newId, nowIso, cors, corsPreflight } from "@/server/api";
+import { q, run, ok, bad, body, record, newId, nowIso, cors, corsPreflight, getDefaultPropertyId } from "@/server/api";
 import { sha256 } from "@/server/db";
 
 export async function OPTIONS() {
@@ -14,7 +14,8 @@ function validContact(c: string): boolean {
 /** GET /api/consent/guardian?property_id= — newest first. Console-only (same-origin, no CORS). */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const propertyId = url.searchParams.get("property_id") ?? "prop_main";
+  const propertyId = url.searchParams.get("property_id") ?? await getDefaultPropertyId();
+  if (!propertyId) return bad("Workspace is not set up yet", 503);
   const rows = await q(`SELECT * FROM guardian_consents WHERE property_id = ? ORDER BY created_at DESC LIMIT 500`, propertyId) as Array<Record<string, unknown>>;
   // node:sqlite rows carry a null prototype — normalize before JSON output.
   return ok({ consents: JSON.parse(JSON.stringify(rows)), property_id: propertyId });
@@ -39,7 +40,7 @@ interface GuardianBody {
 export async function POST(req: Request) {
   const b = await body<GuardianBody>(req);
   if (!b) return cors(bad("Invalid JSON body"));
-  const propertyId = (b.property_id ?? "prop_main").trim();
+  const propertyId = (b.property_id ?? (await getDefaultPropertyId()) ?? "").trim();
   if (!propertyId) return cors(bad("property_id is required"));
   if (!b.visitor_hash?.trim()) return cors(bad("visitor_hash is required"));
   if (!b.guardian_name?.trim()) return cors(bad("guardian_name is required"));

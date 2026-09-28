@@ -1,12 +1,14 @@
-import { qOne, run, ok, bad, body, parseJson, nowIso, record } from "@/server/api";
+import { qOne, run, ok, bad, body, parseJson, nowIso, record, getTenantId } from "@/server/api";
 import { maskSecret } from "@/server/notify";
 
 /**
- * GET /api/admin/notifications — notification provider config for tenant_meridian.
+ * GET /api/admin/notifications — notification provider config for the tenant.
  * Secrets are NEVER returned in full: only masked previews ("re_****abcd").
  */
 export async function GET() {
-  const row = await qOne("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'") as | { settings_json: string }
+  const tid = await getTenantId();
+  if (!tid) return bad("Workspace is not set up yet", 503);
+  const row = await qOne("SELECT settings_json FROM tenant WHERE id = ?", tid) as | { settings_json: string }
     | undefined;
   if (!row) return bad("Tenant not found", 404);
   const settings = parseJson<Record<string, unknown>>(row.settings_json, {});
@@ -52,7 +54,9 @@ const KEYS = ["resend_api_key", "resend_from", "resend_base_url", "whatsapp_webh
 export async function POST(req: Request) {
   const b = await body<NotificationsBody>(req);
   if (!b) return bad("Invalid JSON body");
-  const row = await qOne("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'") as | { settings_json: string }
+  const tid = await getTenantId();
+  if (!tid) return bad("Workspace is not set up yet", 503);
+  const row = await qOne("SELECT settings_json FROM tenant WHERE id = ?", tid) as | { settings_json: string }
     | undefined;
   if (!row) return bad("Tenant not found", 404);
   const settings = parseJson<Record<string, unknown>>(row.settings_json, {});
@@ -64,12 +68,12 @@ export async function POST(req: Request) {
   }
   settings["notifications"] = next;
 
-  await run("UPDATE tenant SET settings_json = ? WHERE id = 'tenant_meridian'", JSON.stringify(settings));
+  await run("UPDATE tenant SET settings_json = ? WHERE id = ?", JSON.stringify(settings), tid);
 
   await record(
     "tenant.notifications_updated",
     "tenant",
-    "tenant_meridian",
+    tid,
     "Notification provider settings updated (values stored, not echoed)",
     {
       email_configured: (next.resend_api_key ?? "").length > 0,

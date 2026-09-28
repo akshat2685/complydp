@@ -1,4 +1,4 @@
-import { q, qOne, run, ok, bad, body, record, newId, nowIso, parseJson } from "@/server/api";
+import { q, qOne, run, ok, bad, body, record, newId, nowIso, parseJson, getDefaultPropertyId } from "@/server/api";
 import { scanWebsite } from "@/server/scanner";
 
 /** GET /api/scan — recent scan runs. */
@@ -25,7 +25,8 @@ interface ScanBody {
 export async function POST(req: Request) {
   const b = await body<ScanBody>(req);
   if (!b?.url) return bad("url is required");
-  const prop = b.property_id ?? "prop_main";
+  const prop = b.property_id ?? await getDefaultPropertyId();
+  if (!prop) return bad("Workspace is not set up yet", 503);
   const scanId = newId("scan");
   const started = nowIso();
   await run(`INSERT INTO scans (id, property_id, kind, status, started_at, stats_json) VALUES (?, ?, 'cookie', 'running', ?, '{}')`, scanId, prop, started);

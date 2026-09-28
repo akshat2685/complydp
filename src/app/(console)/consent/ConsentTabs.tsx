@@ -25,12 +25,14 @@ export function ConsentTabs({
   events,
   guardians,
   snippetUrl,
+  domain,
 }: {
   settings: ConsentSettings;
   cookies: CookieRow[];
   events: ConsentEvent[];
   guardians: GuardianConsent[];
   snippetUrl: string;
+  domain: string;
 }) {
   const [tab, setTab] = useState<TabId>("install");
 
@@ -65,9 +67,9 @@ export function ConsentTabs({
         })}
       </div>
 
-      {tab === "install" && <InstallTab snippetUrl={snippetUrl} />}
+      {tab === "install" && <InstallTab snippetUrl={snippetUrl} banner={settings.banner} />}
       {tab === "configure" && <ConfigureTab initial={settings} />}
-      {tab === "scan" && <ScanTab initialCookies={cookies} />}
+      {tab === "scan" && <ScanTab initialCookies={cookies} defaultDomain={domain} />}
       {tab === "logs" && <LogsTab events={events} />}
       {tab === "guardians" && <GuardiansTab initial={guardians} />}
     </div>

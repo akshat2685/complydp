@@ -1,4 +1,4 @@
-import { q, qOne, ok, bad, body, record, parseJson, nowIso, cors, corsPreflight } from "@/server/api";
+import { q, qOne, ok, bad, body, record, parseJson, cors, corsPreflight, getTenantId, getDefaultPropertyId } from "@/server/api";
 import { consentAppend } from "@/server/db";
 
 export async function OPTIONS() {
@@ -8,7 +8,8 @@ export async function OPTIONS() {
 /** GET /api/consent/events?property_id=&limit= — latest consent events, newest first. */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const propertyId = url.searchParams.get("property_id") ?? "prop_main";
+  const propertyId = url.searchParams.get("property_id") ?? await getDefaultPropertyId();
+  if (!propertyId) return bad("Workspace is not set up yet", 503);
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 500);
   const rows = await q(`SELECT * FROM consent_events WHERE property_id = ? ORDER BY created_at DESC LIMIT ?`, propertyId, limit) as Array<Record<string, unknown>>;
   return ok({
@@ -31,7 +32,9 @@ export async function POST(req: Request) {
   const b = await body<ConsentBody>(req);
   if (!b?.visitor_hash || !b?.categories) return bad("visitor_hash and categories are required");
 
-  const tenant = await qOne("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'") as { settings_json: string };
+  const tid = await getTenantId();
+  if (!tid) return bad("Workspace is not set up yet", 503);
+  const tenant = await qOne("SELECT settings_json FROM tenant WHERE id = ?", tid) as { settings_json: string };
   const settings = parseJson<{ age_gating?: boolean }>(tenant.settings_json, {});
   let cats = b.categories;
   const band = b.age_band ?? "adult";
@@ -40,8 +43,10 @@ export async function POST(req: Request) {
     cats = { necessary: true, functional: false, analytics: false, marketing: false };
   }
 
+  const propertyId = b.property_id ?? await getDefaultPropertyId();
+  if (!propertyId) return bad("Workspace is not set up yet", 503);
   const { id, event_hash } = await consentAppend({
-    property_id: b.property_id ?? "prop_main",
+    property_id: propertyId,
     visitor_hash: b.visitor_hash,
     age_band: band,
     categories: cats,
@@ -58,4 +63,3 @@ export async function POST(req: Request) {
 export async function DELETE() {
   return bad("Consent events are append-only evidence and cannot be deleted.", 405);
 }
-void nowIso;

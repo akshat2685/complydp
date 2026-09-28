@@ -1,5 +1,5 @@
 /** GitHub token storage + request helpers (server-only). */
-import { qOne, parseJson } from "@/server/db";
+import { qOne, parseJson, getTenantId } from "@/server/db";
 
 /** Mask a token for display — only first/last 4 chars ever leave the server. */
 export function maskToken(token: string): string {
@@ -9,8 +9,10 @@ export function maskToken(token: string): string {
 
 /** Read the user-pasted GitHub token from tenant settings (read-modify-write elsewhere). */
 export async function readGithubToken(): Promise<string | null> {
+  const tid = await getTenantId();
+  if (!tid) return null;
   const t = await qOne<{ settings_json: string }>(
-    "SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'"
+    "SELECT settings_json FROM tenant WHERE id = ?", tid
   );
   if (!t) return null;
   const settings = parseJson<Record<string, unknown>>(t.settings_json, {});

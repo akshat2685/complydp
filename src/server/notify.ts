@@ -1,12 +1,12 @@
 /**
  * Real notification sending — Resend (email) + a generic WhatsApp webhook.
  *
- * Server-only. Credentials live in tenant.settings_json for 'tenant_meridian'
- * (read-modify-write; never commit secrets anywhere else). Nothing here is
+ * Server-only. Credentials live in tenant.settings_json (read-modify-write;
+ * never commit secrets anywhere else). Nothing here is
  * mocked: if a provider is not configured, senders honestly report
  * "not_configured" and callers keep the log-only evidence behaviour.
  */
-import { qOne, parseJson } from "@/server/api";
+import { qOne, parseJson, getTenantId } from "@/server/api";
 
 export interface NotifyConfig {
   resendApiKey: string;
@@ -24,7 +24,6 @@ export interface SendResult {
 }
 
 const DEFAULT_RESEND_BASE_URL = "https://api.resend.com";
-const TENANT_ID = "tenant_meridian";
 
 interface NotifySettings {
   resend_api_key?: string;
@@ -36,7 +35,9 @@ interface NotifySettings {
 
 /** Read notification settings from tenant.settings_json (nested "notifications" key). */
 async function readNotifySettings(): Promise<NotifySettings> {
-  const row = await qOne<{ settings_json: string }>("SELECT settings_json FROM tenant WHERE id = ?", TENANT_ID);
+  const tid = await getTenantId();
+  if (!tid) return {};
+  const row = await qOne<{ settings_json: string }>("SELECT settings_json FROM tenant WHERE id = ?", tid);
   if (!row) return {};
   const settings = parseJson<Record<string, unknown>>(row.settings_json, {});
   const n = settings["notifications"];

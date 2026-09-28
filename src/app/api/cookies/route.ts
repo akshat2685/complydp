@@ -1,8 +1,9 @@
-import { q, qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
+import { q, qOne, run, ok, bad, body, record, newId, nowIso, getDefaultPropertyId } from "@/server/api";
 
 /** GET /api/cookies?property_id= — cookie inventory. */
 export async function GET(req: Request) {
-  const propertyId = new URL(req.url).searchParams.get("property_id") ?? "prop_main";
+  const propertyId = new URL(req.url).searchParams.get("property_id") ?? await getDefaultPropertyId();
+  if (!propertyId) return bad("Workspace is not set up yet", 503);
   const rows = await q(`SELECT * FROM cookies WHERE property_id = ? ORDER BY category, name`, propertyId);
   return ok({ cookies: rows, property_id: propertyId });
 }
@@ -21,7 +22,8 @@ export async function POST(req: Request) {
   const b = await body<CookieBody>(req);
   if (!b?.name) return bad("name is required");
   const t = nowIso();
-  const prop = b.property_id ?? "prop_main";
+  const prop = b.property_id ?? await getDefaultPropertyId();
+  if (!prop) return bad("Workspace is not set up yet", 503);
   const existing = await qOne("SELECT id FROM cookies WHERE property_id = ? AND name = ?", prop, b.name) as { id: string } | undefined;
   if (existing) {
     await run(`UPDATE cookies SET category = COALESCE(?, category), description = COALESCE(?, description),

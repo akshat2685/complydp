@@ -7,19 +7,30 @@
 import { strict as assert } from "node:assert";
 
 const BASE = process.env.BASE_URL || "http://localhost:3000";
+const ADMIN_KEY = process.env.PRAMAAN_ADMIN_KEY || "";
 const j = (r) => r.json();
 
 async function api(method, path, body) {
   const r = await fetch(`${BASE}${path}`, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(ADMIN_KEY ? { "x-pramaan-key": ADMIN_KEY } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await j(r).catch(() => ({}));
   return { status: r.status, data };
 }
 
-console.log("=== PRAMAAN MVP SMOKE TEST ===");
+console.log("=== PRAMAAN SMOKE TEST ===");
+
+// 0. Resolve the real property id (no hardcoded demo ids)
+const cfg = await api("GET", "/api/consent/config");
+assert.equal(cfg.status, 200, "consent config must load (workspace set up?)");
+const PROP = cfg.data.property.id;
+assert.ok(PROP, "a property must exist");
+console.log(`  [0] property: ${PROP} (${cfg.data.property.domain})`);
 
 // 1. Health: real DB + valid chain
 {
@@ -35,7 +46,7 @@ console.log("=== PRAMAAN MVP SMOKE TEST ===");
 {
   const { data } = await api("GET", "/api/evidence?verify=1");
   assert.equal(data.verify.ok, true);
-  assert.ok(data.verify.checked >= 10);
+  assert.ok(data.verify.checked >= 1);
   console.log(`  [2] evidence chain valid (${data.verify.checked} entries)`);
 }
 
@@ -120,8 +131,10 @@ console.log("=== PRAMAAN MVP SMOKE TEST ===");
 
 // 8. PII classifier: Indian identifiers
 {
+  const sys = await api("POST", "/api/systems", { name: "Smoke Test CRM", kind: "saas" });
+  assert.equal(sys.status, 201);
   const { data } = await api("POST", "/api/data-fields", {
-    system_id: (await (await fetch(`${BASE}/api/systems`)).json()).systems[0].id,
+    system_id: sys.data.id,
     field_name: "smoke_test_voter_id",
   });
   assert.equal(data.classification.category, "govt_id");
@@ -145,7 +158,7 @@ console.log("=== PRAMAAN MVP SMOKE TEST ===");
 {
   const vh = `guardian-${Date.now()}`;
   const created = await api("POST", "/api/consent/guardian", {
-    property_id: "prop_main",
+    property_id: PROP,
     visitor_hash: vh,
     guardian_name: "Test Guardian",
     relationship: "Parent",
@@ -156,7 +169,7 @@ console.log("=== PRAMAAN MVP SMOKE TEST ===");
   assert.equal(created.data.contact_hash.length, 64, "contact_hash must be real SHA-256");
   assert.ok(!JSON.stringify(created.data).includes("guardian@example.in"), "raw contact must not echo");
   const rejected = await api("POST", "/api/consent/guardian", {
-    property_id: "prop_main",
+    property_id: PROP,
     visitor_hash: vh,
     guardian_name: "Test Guardian",
     relationship: "Parent",
@@ -164,7 +177,7 @@ console.log("=== PRAMAAN MVP SMOKE TEST ===");
     consent_given: false,
   });
   assert.equal(rejected.status, 400);
-  const list = await api("GET", "/api/consent/guardian?property_id=prop_main");
+  const list = await api("GET", `/api/consent/guardian?property_id=${PROP}`);
   assert.ok(list.data.consents.some((g) => g.visitor_hash === vh));
   const verified = await api("PATCH", `/api/consent/guardian/${created.data.id}`, { action: "verify" });
   assert.equal(verified.status, 200);
@@ -172,14 +185,12 @@ console.log("=== PRAMAAN MVP SMOKE TEST ===");
   console.log(`  [11] guardian consent recorded + verified (${created.data.id})`);
 }
 
-// 12. Cookie library expanded + snippet has guardian step
+// 12. Snippet has the guardian step (cookie table holds only real scan results now)
 {
-  const cookies = await api("GET", "/api/cookies");
-  assert.ok(cookies.data.cookies.length >= 200, `library should be ~250, got ${cookies.data.cookies.length}`);
   const snippet = await fetch(`${BASE}/api/consent/snippet`);
   const js = await snippet.text();
   assert.match(js.toLowerCase(), /guardian/, "snippet must include the guardian step");
-  console.log(`  [12] cookie library: ${cookies.data.cookies.length} entries; snippet has guardian step`);
+  console.log("  [12] snippet has guardian step");
 }
 
 // 13. Real notification sending via local mock (Resend-compatible)
@@ -272,11 +283,11 @@ let mockPort;
   console.log("  [14] DSR resolution email: sent + logged_not_configured paths ok");
 }
 
-// 15. Vendor questionnaire: send → public submit → responded
+// 15. Vendor questionnaire: register → send → public submit → responded
 {
-  const vendors = await api("GET", "/api/vendors");
-  assert.ok(vendors.data.vendors.length > 0, "need at least one seeded vendor");
-  const vid = vendors.data.vendors[0].id;
+  const reg = await api("POST", "/api/vendors", { name: "Smoke Test Vendor", category: "cloud", country: "India" });
+  assert.equal(reg.status, 201);
+  const vid = reg.data.id;
   const sent = await api("POST", `/api/vendors/${vid}/questionnaire`, {});
   assert.equal(sent.status, 201);
   assert.ok(sent.data.token.length > 20, "token must be unguessable");

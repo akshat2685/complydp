@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { qOne } from "@/server/db";
+import { qOne, getTenantId } from "@/server/db";
 import { Seal } from "@/components/ui";
 import { NavLinks } from "./NavLinks";
 
@@ -17,7 +17,9 @@ async function getCounts() {
 }
 
 async function getTenant() {
-  const t = await qOne("SELECT name, domain, dpo_name FROM tenant WHERE id = 'tenant_meridian'") as {
+  const tid = await getTenantId();
+  if (!tid) return { name: "Pramaan", domain: "", dpo_name: "" };
+  const t = await qOne("SELECT name, domain, dpo_name FROM tenant WHERE id = ?", tid) as {
     name: string; domain: string; dpo_name: string;
   };
   return t;
@@ -64,12 +66,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             <span className="w-1.5 h-1.5 rounded-full bg-status-green" />
             <span className="font-mono">Ledger: SQLite · SHA-256 chained</span>
           </div>
-          <Link
-            href="/settings"
-            className="mt-2 inline-block text-[11px] font-semibold text-ink-muted hover:text-ink underline underline-offset-2"
-          >
-            Reset demo data
-          </Link>
         </div>
       </aside>
 

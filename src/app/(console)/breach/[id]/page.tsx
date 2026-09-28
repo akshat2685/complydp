@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { q, qOne, run, parseJson } from "@/server/db";
+import { q, qOne, run, parseJson, getTenantId } from "@/server/db";
 import {
   PageHead,
   Card,
@@ -72,8 +72,9 @@ export default async function BreachDetailPage({ params }: { params: Promise<{ i
   if (!rawRow) notFound();
   const row = JSON.parse(JSON.stringify(rawRow)) as BreachRow;
 
+  const tid = await getTenantId();
   const tenant = JSON.parse(
-    JSON.stringify(await qOne("SELECT name, dpo_email FROM tenant WHERE id = 'tenant_meridian'"))
+    JSON.stringify(tid ? await qOne("SELECT name, dpo_email FROM tenant WHERE id = ?", tid) : { name: "", dpo_email: "" })
   ) as {
     name: string;
     dpo_email: string;

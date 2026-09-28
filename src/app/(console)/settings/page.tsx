@@ -1,7 +1,6 @@
-import { qOne, parseJson } from "@/server/db";
+import { qOne, parseJson, getTenantId } from "@/server/db";
 import { GET as healthCheck } from "@/app/api/health/route";
 import { PageHead, Card, CardTitle } from "@/components/ui";
-import { DangerZone } from "./DangerZone";
 import { NotificationSettings, NotificationChip } from "./NotificationSettings";
 import { GitHubSettings } from "./GitHubSettings";
 import { maskToken, readGithubToken } from "@/server/github";
@@ -25,7 +24,10 @@ const CAPABILITY_LABELS: Array<[keyof Capabilities, string]> = [
 ];
 
 export default async function SettingsPage() {
-  const tenant = await qOne(`SELECT * FROM tenant WHERE id = 'tenant_meridian'`) as {
+  const tid = await getTenantId();
+  // Layout redirects to /setup when no tenant exists; this is a safety net.
+  if (!tid) return <div className="p-8 text-ink-muted">Workspace is not set up yet.</div>;
+  const tenant = await qOne(`SELECT * FROM tenant WHERE id = ?`, tid) as {
     name: string;
     domain: string;
     dpo_name: string;
@@ -121,12 +123,8 @@ export default async function SettingsPage() {
         </div>
       </Card>
 
-      <div className="mt-5">
-        <DangerZone />
-      </div>
-
       <p className="font-mono text-[11px] text-ink-faint mt-8 text-center">
-        Pramaan MVP · SQLite + Next.js · no data leaves this machine.
+        Pramaan · evidence-first privacy ops.
       </p>
     </div>
   );

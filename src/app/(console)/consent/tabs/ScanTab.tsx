@@ -15,9 +15,9 @@ interface ScanCookie {
   evidence: string;
 }
 
-export function ScanTab({ initialCookies }: { initialCookies: CookieRow[] }) {
+export function ScanTab({ initialCookies, defaultDomain }: { initialCookies: CookieRow[]; defaultDomain: string }) {
   const router = useRouter();
-  const [url, setUrl] = useState("meridianfoods.in");
+  const [url, setUrl] = useState(defaultDomain);
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<null | {
     pages_crawled: number;

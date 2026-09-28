@@ -6,8 +6,11 @@
  * libsql:// or https:// URL (auth via TURSO_AUTH_TOKEN). The SQL dialect is
  * SQLite in both cases, so every statement below works unchanged.
  *
- * Schema is created on first boot (CREATE TABLE IF NOT EXISTS) and seeded
- * with demo tenant data when empty.
+ * Schema is created on first boot (CREATE TABLE IF NOT EXISTS). No demo
+ * data is ever seeded: the deployer creates their real company workspace
+ * through the /setup wizard (POST /api/setup), which is gated by the admin
+ * key. Until setup runs, the tenant table is empty and the console
+ * redirects to /setup.
  *
  * ONLY import this from server contexts (API routes, server components).
  * Never from client components.
@@ -165,6 +168,30 @@ export async function runC(
 ): Promise<{ changes: number; lastInsertRowid: number }> {
   const rs = await c.execute({ sql, args: args as InArgs });
   return { changes: rs.rowsAffected, lastInsertRowid: Number(rs.lastInsertRowid ?? 0) };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tenant — single-tenant per deployment. No hardcoded ids anywhere.   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The deployment's tenant id, or null when /setup hasn't run yet.
+ * Pramaan is single-tenant per deployment: one company per database.
+ */
+export async function getTenantId(): Promise<string | null> {
+  const row = await qOne<{ id: string }>(`SELECT id FROM tenant LIMIT 1`);
+  return row?.id ?? null;
+}
+
+/** The tenant's first property id (created by /setup), or null. */
+export async function getDefaultPropertyId(): Promise<string | null> {
+  const tid = await getTenantId();
+  if (!tid) return null;
+  const row = await qOne<{ id: string }>(
+    `SELECT id FROM properties WHERE tenant_id = ? ORDER BY created_at ASC LIMIT 1`,
+    tid
+  );
+  return row?.id ?? null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -403,55 +430,8 @@ CREATE TABLE IF NOT EXISTS notices (
 async function migrate(client: Client) {
   await client.executeMultiple(SCHEMA);
   await ensureBreachCommsProviderColumns(client);
-  // Seed when the tenant table is empty.
-  const rs = await client.execute("SELECT COUNT(*) AS n FROM tenant");
-  const n = Number((rs.rows[0] as unknown as { n: unknown } | undefined)?.n ?? 0);
-  if (n === 0) {
-    if (await claimSeed(client)) {
-      try {
-        await seedDemoTenant(client);
-      } catch (e) {
-        // Release the claim so a later boot retries instead of serving half-seeded data.
-        await client.execute("DELETE FROM _seed_claim WHERE id = 1");
-        throw e;
-      }
-      // Fail fast: the seed just built hash chains. A broken chain here means the
-      // seed misfired, and booting would serve a corrupt evidence ledger.
-      // Retry the verify: Turso's read-after-write visibility can flake on a
-      // fresh database, and a single flaky read must not fail the whole build.
-      // A genuinely broken chain fails every attempt and still throws.
-      let v = await ledgerVerifyClient(client);
-      for (let attempt = 2; !v.ok && attempt <= 5; attempt++) {
-        await new Promise((r) => setTimeout(r, 2000 * attempt));
-        v = await ledgerVerifyClient(client);
-      }
-      if (!v.ok) throw new Error(`seed produced a broken evidence chain (broken at seq ${v.brokenAt})`);
-    } else {
-      // Another process won the seed claim (parallel build workers, or a
-      // concurrent boot). Wait for the seed to land instead of prerendering
-      // against a half-seeded database.
-      const start = Date.now();
-      for (;;) {
-        await new Promise((r) => setTimeout(r, 1000));
-        const rs2 = await client.execute("SELECT COUNT(*) AS n FROM tenant");
-        if (Number((rs2.rows[0] as unknown as { n: unknown } | undefined)?.n ?? 0) > 0) break;
-        if (Date.now() - start > 120_000) {
-          throw new Error("timed out waiting for a concurrent seed to finish");
-        }
-      }
-    }
-  }
-}
-
-/**
- * Atomic seed claim: INSERT OR IGNORE wins for exactly one process, so
- * concurrent boots (build prerender workers + runtime, or two replicas)
- * can never double-seed. The mkdir file lock only covers same-machine.
- */
-async function claimSeed(client: Client): Promise<boolean> {
-  await client.execute("CREATE TABLE IF NOT EXISTS _seed_claim (id INTEGER PRIMARY KEY CHECK (id = 1))");
-  const rs = await client.execute("INSERT OR IGNORE INTO _seed_claim (id) VALUES (1)");
-  return Number(rs.rowsAffected ?? 0) === 1;
+  // No demo seeding. Schema only — the real tenant is created by /setup.
+  // (Older builds seeded a fictional demo tenant; that path is gone.)
 }
 
 /**
@@ -597,8 +577,3 @@ export async function consentAppend(ev: {
   return { id, event_hash: hash };
   });
 }
-
-/* ------------------------------------------------------------------ */
-/*  Seed — imported lazily to keep this file focused.                  */
-/* ------------------------------------------------------------------ */
-import { seedDemoTenant } from "./seed";
