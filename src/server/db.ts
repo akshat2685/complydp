@@ -428,6 +428,17 @@ CREATE TABLE IF NOT EXISTS notices (
 `;
 
 async function migrate(client: Client) {
+  // ONE-TIME production wipe (2026-09-28): set PRAMAAN_WIPE_ON_BOOT=1 to drop
+  // all tables carrying the old demo tenant, then the schema below recreates
+  // them empty. Remove this block after the wipe deploy goes live.
+  if (process.env.PRAMAAN_WIPE_ON_BOOT === "1") {
+    const tables = await client.execute(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    );
+    for (const r of tables.rows) {
+      await client.execute(`DROP TABLE IF EXISTS "${(r as any).name}"`);
+    }
+  }
   await client.executeMultiple(SCHEMA);
   await ensureBreachCommsProviderColumns(client);
   // No demo seeding. Schema only — the real tenant is created by /setup.
