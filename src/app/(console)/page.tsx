@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { db, parseJson } from "@/server/db";
+import { q, qOne, parseJson } from "@/server/db";
 import { PageHead, Card, CardTitle, Chip, EmptyState, ElapsedClock, CountdownClock } from "@/components/ui";
 import { ArrowUpRight } from "lucide-react";
 
@@ -7,34 +7,28 @@ function sevTone(s: string): "red" | "amber" | "blue" | "mute" {
   return s === "high" || s === "critical" ? "red" : s === "medium" ? "amber" : s === "low" ? "blue" : "mute";
 }
 
-export default function OverviewPage() {
-  const d = db();
-  const q = (sql: string, ...p: unknown[]) => (d.prepare(sql).get(...(p as [])) as { n: number }).n;
+export default async function OverviewPage() {
+  const count = async (sql: string, ...p: unknown[]): Promise<number> => ((await qOne(sql, ...(p as []))) as { n: number }).n;
 
-  const openFindings = q("SELECT COUNT(*) AS n FROM findings WHERE status = 'needs_review'");
-  const consent7d = q("SELECT COUNT(*) AS n FROM consent_events WHERE created_at > datetime('now','-7 days')");
-  const dsrOpen = q("SELECT COUNT(*) AS n FROM dsr_cases WHERE status IN ('new','in_progress','waiting')");
-  const breachOpen = q("SELECT COUNT(*) AS n FROM breach_cases WHERE status = 'open'");
+  const openFindings = await count("SELECT COUNT(*) AS n FROM findings WHERE status = 'needs_review'");
+  const consent7d = await count("SELECT COUNT(*) AS n FROM consent_events WHERE created_at > datetime('now','-7 days')");
+  const dsrOpen = await count("SELECT COUNT(*) AS n FROM dsr_cases WHERE status IN ('new','in_progress','waiting')");
+  const breachOpen = await count("SELECT COUNT(*) AS n FROM breach_cases WHERE status = 'open'");
 
-  const findings = d.prepare(
-    `SELECT id, category, title, severity, created_at FROM findings WHERE status = 'needs_review' ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, created_at DESC LIMIT 8`
-  ).all() as Array<{ id: string; category: string; title: string; severity: string; created_at: string }>;
+  const findings = await q(`SELECT id, category, title, severity, created_at FROM findings WHERE status = 'needs_review' ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, created_at DESC LIMIT 8`) as Array<{ id: string; category: string; title: string; severity: string; created_at: string }>;
 
-  const activity = d.prepare(
-    `SELECT seq, ts, actor, action, summary FROM evidence_ledger ORDER BY seq DESC LIMIT 8`
-  ).all() as Array<{ seq: number; ts: string; actor: string; action: string; summary: string }>;
+  const activity = await q(`SELECT seq, ts, actor, action, summary FROM evidence_ledger ORDER BY seq DESC LIMIT 8`) as Array<{ seq: number; ts: string; actor: string; action: string; summary: string }>;
 
-  const breach = d.prepare(`SELECT * FROM breach_cases WHERE status = 'open' ORDER BY awareness_at DESC LIMIT 1`).get() as
-    | { id: string; code: string; title: string; awareness_at: string; affected_count: number; board_notified_at: string | null; users_notified_at: string | null }
+  const breach = await qOne(`SELECT * FROM breach_cases WHERE status = 'open' ORDER BY awareness_at DESC LIMIT 1`) as | { id: string; code: string; title: string; awareness_at: string; affected_count: number; board_notified_at: string | null; users_notified_at: string | null }
     | undefined;
 
   const state = [
-    ["Cookies inventoried", q("SELECT COUNT(*) AS n FROM cookies"), "/consent"],
-    ["Vendors on register", q("SELECT COUNT(*) AS n FROM vendors"), "/vendors"],
-    ["Systems mapped", q("SELECT COUNT(*) AS n FROM systems"), "/data-map"],
-    ["Data fields classified", q("SELECT COUNT(*) AS n FROM data_fields"), "/data-map"],
-    ["Processing activities", q("SELECT COUNT(*) AS n FROM processing_activities"), "/data-map"],
-    ["Ledger entries", q("SELECT COUNT(*) AS n FROM evidence_ledger"), "/evidence"],
+    ["Cookies inventoried", await count("SELECT COUNT(*) AS n FROM cookies"), "/consent"],
+    ["Vendors on register", await count("SELECT COUNT(*) AS n FROM vendors"), "/vendors"],
+    ["Systems mapped", await count("SELECT COUNT(*) AS n FROM systems"), "/data-map"],
+    ["Data fields classified", await count("SELECT COUNT(*) AS n FROM data_fields"), "/data-map"],
+    ["Processing activities", await count("SELECT COUNT(*) AS n FROM processing_activities"), "/data-map"],
+    ["Ledger entries", await count("SELECT COUNT(*) AS n FROM evidence_ledger"), "/evidence"],
   ] as Array<[string, number, string]>;
 
   const stats = [

@@ -1,39 +1,166 @@
 /**
- * Pramaan server data layer — SQLite via node:sqlite (Node 22+ native, zero deps).
+ * Pramaan server data layer — SQLite via @libsql/client (async).
  *
- * Single-file database at ./data/pramaan.db. Schema is created on first boot
- * (CREATE TABLE IF NOT EXISTS) and seeded with demo tenant data when empty.
+ * Local dev: a SQLite file at ./data/pramaan.db (or $PRAMAAN_DB_PATH).
+ * Production: a remote Turso database when TURSO_DATABASE_URL is set to a
+ * libsql:// or https:// URL (auth via TURSO_AUTH_TOKEN). The SQL dialect is
+ * SQLite in both cases, so every statement below works unchanged.
+ *
+ * Schema is created on first boot (CREATE TABLE IF NOT EXISTS) and seeded
+ * with demo tenant data when empty.
  *
  * ONLY import this from server contexts (API routes, server components).
  * Never from client components.
  */
-import { DatabaseSync } from "node:sqlite";
+import { createClient, type Client, type InArgs } from "@libsql/client";
 import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = process.env.PRamaan_DB_PATH || path.join(DATA_DIR, "pramaan.db");
+/** True when pointed at a remote Turso database. */
+export const IS_REMOTE = (() => {
+  const url = process.env.TURSO_DATABASE_URL ?? "";
+  return url.startsWith("libsql://") || url.startsWith("https://");
+})();
 
-let _db: DatabaseSync | null = null;
+const DATA_DIR = path.join(process.cwd(), "data");
+const LOCAL_DB_PATH = process.env.PRamaan_DB_PATH || path.join(DATA_DIR, "pramaan.db");
+
+let _client: Client | null = null;
+let _init: Promise<Client> | null = null;
+
+/**
+ * Cross-process mutex around first-boot init (schema + seed).
+ * `next build` prerenders pages in parallel worker processes; without this,
+ * several workers race to migrate/seed the same SQLite file, and the native
+ * driver's lock contention surfaces as SQLITE_BUSY or indefinite hangs.
+ * mkdir(2) is atomic, so the first worker to create the lock dir wins; the
+ * rest wait, then find the DB already seeded and skip the seed. Stale locks
+ * (crashed worker) expire after 60s.
+ */
+async function withInitLock<T>(fn: () => Promise<T>): Promise<T> {
+  const lockPath = LOCAL_DB_PATH + ".initlock";
+  const start = Date.now();
+  for (;;) {
+    try {
+      fs.mkdirSync(lockPath);
+      break;
+    } catch (e: unknown) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      try {
+        const ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
+        if (ageMs > 60_000) {
+          fs.rmdirSync(lockPath);
+          continue;
+        }
+      } catch {
+        /* lock vanished mid-check; retry */
+      }
+      if (Date.now() - start > 120_000) {
+        throw new Error(`timed out waiting for DB init lock ${lockPath}`);
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    try {
+      fs.rmdirSync(lockPath);
+    } catch {
+      /* another process already cleaned up; ignore */
+    }
+  }
+}
 
 export function sha256(input: string): string {
   return crypto.createHash("sha256").update(input, "utf8").digest("hex");
 }
 
-function openDb(): DatabaseSync {
-  if (_db) return _db;
+async function initClient(): Promise<Client> {
+  if (IS_REMOTE) {
+    const url = process.env.TURSO_DATABASE_URL as string;
+    const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
+    await migrate(client);
+    return client;
+  }
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  const db = new DatabaseSync(DB_PATH);
-  db.exec("PRAGMA journal_mode = WAL;");
-  db.exec("PRAGMA foreign_keys = ON;");
-  migrate(db);
-  _db = db;
-  return db;
+  // Serialize first-boot across processes (see withInitLock).
+  return withInitLock(async () => {
+    const client = createClient({ url: "file:" + LOCAL_DB_PATH });
+    await client.execute("PRAGMA journal_mode = WAL;");
+    await client.execute("PRAGMA foreign_keys = ON;");
+    await migrate(client);
+    return client;
+  });
 }
 
-export function db(): DatabaseSync {
-  return openDb();
+/**
+ * Singleton client, initialized (schema + seed) on first use.
+ * Concurrent callers share the one in-flight init; a failed boot clears the
+ * promise so the next call retries instead of replaying the same rejection.
+ */
+export async function db(): Promise<Client> {
+  if (_client) return _client;
+  if (!_init) {
+    _init = initClient();
+    _init.then(
+      (c) => {
+        _client = c;
+        _init = null;
+      },
+      () => {
+        _init = null;
+      }
+    );
+  }
+  return _init;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Query helpers — keep call-site diffs small.                         */
+/* ------------------------------------------------------------------ */
+
+/** Run a SELECT; rows come back as plain objects (libsql default row mode). */
+export async function q<T>(sql: string, ...args: unknown[]): Promise<T[]> {
+  const c = await db();
+  const rs = await c.execute({ sql, args: args as InArgs });
+  return rs.rows as unknown as T[];
+}
+
+/** Run a SELECT; the first row, or undefined when there are no rows. */
+export async function qOne<T>(sql: string, ...args: unknown[]): Promise<T | undefined> {
+  const rows = await q<T>(sql, ...args);
+  return rows[0];
+}
+
+/** Run an INSERT/UPDATE/DELETE. */
+export async function run(
+  sql: string,
+  ...args: unknown[]
+): Promise<{ changes: number; lastInsertRowid: number }> {
+  const c = await db();
+  return runC(c, sql, args);
+}
+
+/**
+ * Client-bound query helpers. Used internally when a caller already holds a
+ * client — notably during first-boot init, where going through db() would
+ * re-enter the in-flight init promise and deadlock (migrate → seed →
+ * db() → same promise).
+ */
+export async function qC<T>(c: Client, sql: string, args: unknown[]): Promise<T[]> {
+  const rs = await c.execute({ sql, args: args as InArgs });
+  return rs.rows as unknown as T[];
+}
+
+export async function runC(
+  c: Client,
+  sql: string,
+  args: unknown[]
+): Promise<{ changes: number; lastInsertRowid: number }> {
+  const rs = await c.execute({ sql, args: args as InArgs });
+  return { changes: rs.rowsAffected, lastInsertRowid: Number(rs.lastInsertRowid ?? 0) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -269,25 +396,32 @@ CREATE TABLE IF NOT EXISTS notices (
 );
 `;
 
-function migrate(db: DatabaseSync) {
-  db.exec(SCHEMA);
-  ensureBreachCommsProviderColumns(db);
+async function migrate(client: Client) {
+  await client.executeMultiple(SCHEMA);
+  await ensureBreachCommsProviderColumns(client);
   // Seed when the tenant table is empty.
-  const row = db.prepare("SELECT COUNT(*) AS n FROM tenant").get() as { n: number };
-  if (row.n === 0) {
-    seed(db);
+  const rs = await client.execute("SELECT COUNT(*) AS n FROM tenant");
+  const n = Number((rs.rows[0] as unknown as { n: unknown } | undefined)?.n ?? 0);
+  if (n === 0) {
+    await seedDemoTenant(client);
   }
 }
 
 /**
  * Idempotent column migration for breach_comms: existing DBs created before
  * the provider-tracking columns existed get them via ALTER TABLE.
+ * Remote-safe: instead of PRAGMA table_info, just try the ALTER and ignore
+ * the duplicate-column error (fresh DBs already have the column from CREATE TABLE).
  */
-function ensureBreachCommsProviderColumns(db: DatabaseSync) {
-  const cols = db.prepare("PRAGMA table_info(breach_comms)").all() as Array<{ name: string }>;
-  const names = new Set(cols.map((c) => c.name));
-  if (!names.has("provider_id")) db.exec("ALTER TABLE breach_comms ADD COLUMN provider_id TEXT");
-  if (!names.has("provider_response")) db.exec("ALTER TABLE breach_comms ADD COLUMN provider_response TEXT");
+async function ensureBreachCommsProviderColumns(client: Client) {
+  for (const col of ["provider_id", "provider_response"]) {
+    try {
+      await client.execute(`ALTER TABLE breach_comms ADD COLUMN ${col} TEXT`);
+    } catch (e) {
+      if (e instanceof Error && /duplicate column/i.test(e.message)) continue;
+      throw e;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -313,41 +447,41 @@ export function parseJson<T>(raw: string | null, fallback: T): T {
 /* ------------------------------------------------------------------ */
 /*  Evidence ledger — real SHA-256 hash chain.                         */
 /* ------------------------------------------------------------------ */
-export function ledgerAppend(
-  db: DatabaseSync,
-  entry: {
-    actor: string;
-    action: string;
-    entity_type: string;
-    entity_id: string;
-    summary: string;
-    details?: Record<string, unknown>;
-  }
-): { seq: number; entry_hash: string } {
-  const last = db
-    .prepare("SELECT entry_hash FROM evidence_ledger ORDER BY seq DESC LIMIT 1")
-    .get() as { entry_hash: string } | undefined;
+export async function ledgerAppend(entry: {
+  actor: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  summary: string;
+  details?: Record<string, unknown>;
+}, client?: Client): Promise<{ seq: number; entry_hash: string }> {
+  const c = client ?? (await db());
+  const last = await qC<{ entry_hash: string }>(
+    c,
+    "SELECT entry_hash FROM evidence_ledger ORDER BY seq DESC LIMIT 1",
+    []
+  ).then((rows) => rows[0]);
   const prev = last?.entry_hash ?? "GENESIS";
   const ts = nowIso();
   const details = JSON.stringify(entry.details ?? {});
   const payload = [prev, ts, entry.actor, entry.action, entry.entity_type, entry.entity_id, entry.summary, details].join("|");
   const hash = sha256(payload);
-  const res = db
-    .prepare(
-      `INSERT INTO evidence_ledger (ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(ts, entry.actor, entry.action, entry.entity_type, entry.entity_id, entry.summary, details, prev, hash);
-  return { seq: Number(res.lastInsertRowid), entry_hash: hash };
+  const res = await runC(
+    c,
+    `INSERT INTO evidence_ledger (ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [ts, entry.actor, entry.action, entry.entity_type, entry.entity_id, entry.summary, details, prev, hash]
+  );
+  return { seq: res.lastInsertRowid, entry_hash: hash };
 }
 
-export function ledgerVerify(db: DatabaseSync): { ok: boolean; checked: number; brokenAt?: number } {
-  const rows = db
-    .prepare("SELECT seq, ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash FROM evidence_ledger ORDER BY seq ASC")
-    .all() as Array<{
+export async function ledgerVerify(): Promise<{ ok: boolean; checked: number; brokenAt?: number }> {
+  const rows = await q<{
     seq: number; ts: string; actor: string; action: string; entity_type: string;
     entity_id: string; summary: string; details_json: string; prev_hash: string; entry_hash: string;
-  }>;
+  }>(
+    "SELECT seq, ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash FROM evidence_ledger ORDER BY seq ASC"
+  );
   let prev = "GENESIS";
   for (const r of rows) {
     if (r.prev_hash !== prev) return { ok: false, checked: rows.length, brokenAt: r.seq };
@@ -359,30 +493,32 @@ export function ledgerVerify(db: DatabaseSync): { ok: boolean; checked: number; 
 }
 
 /* Consent events use the same chaining idea, scoped per property. */
-export function consentAppend(
-  db: DatabaseSync,
-  ev: {
-    property_id: string;
-    visitor_hash: string;
-    age_band: string;
-    categories: { necessary: boolean; functional: boolean; analytics: boolean; marketing: boolean };
-    consent_mode: string;
-    notice_version: string;
-  }
-): { id: string; event_hash: string } {
-  const last = db
-    .prepare("SELECT event_hash FROM consent_events WHERE property_id = ? ORDER BY rowid DESC LIMIT 1")
-    .get(ev.property_id) as { event_hash: string } | undefined;
+export async function consentAppend(ev: {
+  property_id: string;
+  visitor_hash: string;
+  age_band: string;
+  categories: { necessary: boolean; functional: boolean; analytics: boolean; marketing: boolean };
+  consent_mode: string;
+  notice_version: string;
+}, client?: Client): Promise<{ id: string; event_hash: string }> {
+  const c = client ?? (await db());
+  const last = await qC<{ event_hash: string }>(
+    c,
+    "SELECT event_hash FROM consent_events WHERE property_id = ? ORDER BY rowid DESC LIMIT 1",
+    [ev.property_id]
+  ).then((rows) => rows[0]);
   const prev = last?.event_hash ?? "GENESIS";
   const ts = nowIso();
   const cats = JSON.stringify(ev.categories);
   const payload = [prev, ts, ev.property_id, ev.visitor_hash, ev.age_band, cats, ev.consent_mode, ev.notice_version].join("|");
   const hash = sha256(payload);
   const id = newId("cev");
-  db.prepare(
+  await runC(
+    c,
     `INSERT INTO consent_events (id, property_id, visitor_hash, age_band, categories_json, consent_mode, notice_version, created_at, prev_hash, event_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, ev.property_id, ev.visitor_hash, ev.age_band, cats, ev.consent_mode, ev.notice_version, ts, prev, hash);
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, ev.property_id, ev.visitor_hash, ev.age_band, cats, ev.consent_mode, ev.notice_version, ts, prev, hash]
+  );
   return { id, event_hash: hash };
 }
 
@@ -390,6 +526,3 @@ export function consentAppend(
 /*  Seed — imported lazily to keep this file focused.                  */
 /* ------------------------------------------------------------------ */
 import { seedDemoTenant } from "./seed";
-function seed(db: DatabaseSync) {
-  seedDemoTenant(db);
-}

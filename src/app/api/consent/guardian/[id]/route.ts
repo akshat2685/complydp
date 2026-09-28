@@ -1,4 +1,4 @@
-import { db, ok, bad, body, record, nowIso } from "@/server/api";
+import { qOne, run, ok, bad, body, record, nowIso } from "@/server/api";
 
 /**
  * PATCH /api/consent/guardian/:id — verify action: marks the guardian consent
@@ -9,16 +9,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const b = await body<{ action?: string }>(req);
   if (b?.action !== "verify") return bad("action must be 'verify'");
 
-  const d = db();
-  const row = d.prepare("SELECT * FROM guardian_consents WHERE id = ?").get(id) as
-    | Record<string, unknown>
+  const row = await qOne("SELECT * FROM guardian_consents WHERE id = ?", id) as | Record<string, unknown>
     | undefined;
   if (!row) return bad("Guardian consent not found", 404);
   if (row.verified_at) return ok({ id, verified_at: row.verified_at, already: true });
 
   const t = nowIso();
-  d.prepare("UPDATE guardian_consents SET verified_at = ? WHERE id = ?").run(t, id);
-  record(
+  await run("UPDATE guardian_consents SET verified_at = ? WHERE id = ?", t, id);
+  await record(
     "guardian_consent.verified",
     "guardian_consent",
     id,

@@ -1,4 +1,4 @@
-import { db, parseJson } from "@/server/db";
+import { q, parseJson } from "@/server/db";
 import { DataMapClient } from "./DataMapClient";
 
 export interface SystemRow {
@@ -40,15 +40,12 @@ export interface VendorRef {
   country: string;
 }
 
-export default function DataMapPage() {
-  const d = db();
+export default async function DataMapPage() {
 
-  const systems = d.prepare(`SELECT * FROM systems ORDER BY name`).all() as Array<
+  const systems = await q(`SELECT * FROM systems ORDER BY name`) as Array<
     Record<string, unknown>
   >;
-  const fieldCounts = d
-    .prepare(`SELECT system_id, COUNT(*) AS n FROM data_fields GROUP BY system_id`)
-    .all() as Array<{ system_id: string; n: number }>;
+  const fieldCounts = await q(`SELECT system_id, COUNT(*) AS n FROM data_fields GROUP BY system_id`) as Array<{ system_id: string; n: number }>;
   const fc: Record<string, number> = {};
   for (const c of fieldCounts) fc[c.system_id] = c.n;
 
@@ -61,14 +58,10 @@ export default function DataMapPage() {
     field_count: fc[s.id as string] ?? 0,
   }));
 
-  const fields = d
-    .prepare(
-      `SELECT f.*, s.name AS system_name, s.kind AS system_kind
+  const fields = await q(`SELECT f.*, s.name AS system_name, s.kind AS system_kind
        FROM data_fields f JOIN systems s ON s.id = f.system_id
-       ORDER BY s.name, f.field_name`
-    )
-    .all() as Array<Record<string, unknown>>;
-  const acts = d.prepare(`SELECT id, name FROM processing_activities`).all() as Array<{
+       ORDER BY s.name, f.field_name`) as Array<Record<string, unknown>>;
+  const acts = await q(`SELECT id, name FROM processing_activities`) as Array<{
     id: string;
     name: string;
   }>;
@@ -88,15 +81,9 @@ export default function DataMapPage() {
     activity_name: actName[f.mapped_activity_id as string] ?? null,
   }));
 
-  const activities = d
-    .prepare(`SELECT * FROM processing_activities ORDER BY name`)
-    .all() as Array<Record<string, unknown>>;
-  const links = d
-    .prepare(
-      `SELECT av.activity_id, v.id, v.name, v.dpa_status, v.country
-       FROM activity_vendors av JOIN vendors v ON v.id = av.vendor_id`
-    )
-    .all() as Array<{ activity_id: string; id: string; name: string; dpa_status: string; country: string }>;
+  const activities = await q(`SELECT * FROM processing_activities ORDER BY name`) as Array<Record<string, unknown>>;
+  const links = await q(`SELECT av.activity_id, v.id, v.name, v.dpa_status, v.country
+       FROM activity_vendors av JOIN vendors v ON v.id = av.vendor_id`) as Array<{ activity_id: string; id: string; name: string; dpa_status: string; country: string }>;
   const byAct: Record<string, ActivityRow["vendors"]> = {};
   for (const l of links) {
     (byAct[l.activity_id] ??= []).push({ id: l.id, name: l.name, dpa_status: l.dpa_status, country: l.country });
@@ -114,8 +101,7 @@ export default function DataMapPage() {
   }));
 
   const vendorRefs: VendorRef[] = (
-    d.prepare(`SELECT id, name, country FROM vendors ORDER BY name`).all() as Array<Record<string, unknown>>
-  ).map((v) => ({ id: v.id as string, name: v.name as string, country: v.country as string }));
+    await q(`SELECT id, name, country FROM vendors ORDER BY name`) as Array<Record<string, unknown>>).map((v) => ({ id: v.id as string, name: v.name as string, country: v.country as string }));
 
   // node:sqlite returns rows as [Object: null prototype]; Next.js refuses to
   // serialize those into client components. Deep-clone to plain objects.

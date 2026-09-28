@@ -1,13 +1,11 @@
-import { db, parseJson } from "@/server/db";
+import { qOne, parseJson } from "@/server/db";
 import { Seal, EmptyState } from "@/components/ui";
 import { DsrFormClient } from "./DsrFormClient";
 
 export default async function PublicDsrPage({ params }: { params: Promise<{ property: string }> }) {
   const { property } = await params;
-  const d = db();
 
-  const prop = d.prepare("SELECT * FROM properties WHERE id = ?").get(property) as
-    | { id: string; tenant_id: string; domain: string; display_name: string }
+  const prop = await qOne("SELECT * FROM properties WHERE id = ?", property) as | { id: string; tenant_id: string; domain: string; display_name: string }
     | undefined;
 
   if (!prop) {
@@ -23,7 +21,7 @@ export default async function PublicDsrPage({ params }: { params: Promise<{ prop
     );
   }
 
-  const tenant = d.prepare("SELECT * FROM tenant WHERE id = ?").get(prop.tenant_id) as {
+  const tenant = await qOne("SELECT * FROM tenant WHERE id = ?", prop.tenant_id) as {
     name: string;
     domain: string;
     dpo_email: string;

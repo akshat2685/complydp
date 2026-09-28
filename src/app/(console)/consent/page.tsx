@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { db, parseJson } from "@/server/db";
+import { q, qOne, parseJson } from "@/server/db";
 import { PageHead } from "@/components/ui";
 import { ConsentTabs } from "./ConsentTabs";
 import type { ConsentSettings, CookieRow, ConsentEvent, BannerCfg, GuardianConsent } from "./types";
@@ -15,9 +15,8 @@ const DEFAULT_BANNER: BannerCfg = {
 };
 
 export default async function ConsentPage() {
-  const d = db();
 
-  const t = d.prepare("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'").get() as { settings_json: string };
+  const t = await qOne("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'") as { settings_json: string };
   const raw = parseJson<Partial<ConsentSettings>>(t.settings_json, {});
   const settings: ConsentSettings = {
     age_gating: raw.age_gating ?? false,
@@ -30,11 +29,11 @@ export default async function ConsentPage() {
   const plain = <T,>(rows: unknown): T => JSON.parse(JSON.stringify(rows)) as T;
 
   const cookies = plain<CookieRow[]>(
-    d.prepare(`SELECT * FROM cookies WHERE property_id = 'prop_main' ORDER BY category, name`).all()
+    await q(`SELECT * FROM cookies WHERE property_id = 'prop_main' ORDER BY category, name`)
   );
 
   const eventRows = plain<Array<Omit<ConsentEvent, "categories"> & { categories_json: string }>>(
-    d.prepare(`SELECT * FROM consent_events WHERE property_id = 'prop_main' ORDER BY created_at DESC LIMIT 100`).all()
+    await q(`SELECT * FROM consent_events WHERE property_id = 'prop_main' ORDER BY created_at DESC LIMIT 100`)
   );
   const events: ConsentEvent[] = eventRows.map((r) => ({
     ...r,
@@ -42,7 +41,7 @@ export default async function ConsentPage() {
   }));
 
   const guardians = plain<GuardianConsent[]>(
-    d.prepare(`SELECT * FROM guardian_consents WHERE property_id = 'prop_main' ORDER BY created_at DESC LIMIT 200`).all()
+    await q(`SELECT * FROM guardian_consents WHERE property_id = 'prop_main' ORDER BY created_at DESC LIMIT 200`)
   );
 
   const h = await headers();

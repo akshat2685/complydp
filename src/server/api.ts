@@ -1,8 +1,8 @@
 /** Shared helpers for API routes. */
 import { NextResponse } from "next/server";
-import { db, ledgerAppend, ledgerVerify, nowIso, newId, parseJson } from "@/server/db";
+import { db, q, qOne, run, IS_REMOTE, ledgerAppend, ledgerVerify, nowIso, newId, parseJson } from "@/server/db";
 
-export { db, ledgerAppend, ledgerVerify, nowIso, newId, parseJson };
+export { db, q, qOne, run, IS_REMOTE, ledgerAppend, ledgerVerify, nowIso, newId, parseJson };
 
 export function ok(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
@@ -21,7 +21,7 @@ export async function body<T>(req: Request): Promise<T | null> {
 }
 
 /** Append a ledger entry for a mutation. Actor defaults to "dpo". */
-export function record(
+export async function record(
   action: string,
   entity_type: string,
   entity_id: string,
@@ -29,7 +29,7 @@ export function record(
   details?: Record<string, unknown>,
   actor = "dpo"
 ) {
-  return ledgerAppend(db(), { actor, action, entity_type, entity_id, summary, details });
+  return ledgerAppend({ actor, action, entity_type, entity_id, summary, details });
 }
 
 export function rowToJson<T>(row: Record<string, unknown>, jsonKeys: string[]): T {

@@ -1,4 +1,4 @@
-import { db, ok, bad, body, record, newId, nowIso } from "@/server/api";
+import { qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
 import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire";
 
 /** POST /api/q/:token — public vendor questionnaire submission.
@@ -9,13 +9,11 @@ import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire";
  */
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const d = db();
 
-  const q = d.prepare("SELECT * FROM questionnaires WHERE token = ?").get(token) as
-    | { id: string; vendor_id: string; token: string; status: string; created_at: string }
+  const qn = await qOne("SELECT * FROM questionnaires WHERE token = ?", token) as | { id: string; vendor_id: string; token: string; status: string; created_at: string }
     | undefined;
-  if (!q) return bad("Invalid questionnaire link", 404);
-  if (q.status === "responded") return bad("This questionnaire has already been submitted", 409);
+  if (!qn) return bad("Invalid questionnaire link", 404);
+  if (qn.status === "responded") return bad("This questionnaire has already been submitted", 409);
 
   const b = await body<{ answers?: Record<string, string> }>(req);
   const answers: Record<string, string> = {};
@@ -37,30 +35,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   const rid = newId("qresp");
   const ts = nowIso();
-  d.prepare(
-    `INSERT INTO questionnaire_responses (id, questionnaire_id, answers_json, submitted_at)
-     VALUES (?, ?, ?, ?)`
-  ).run(rid, q.id, JSON.stringify(answers), ts);
-  d.prepare("UPDATE questionnaires SET status = 'responded' WHERE id = ?").run(q.id);
+  await run(`INSERT INTO questionnaire_responses (id, questionnaire_id, answers_json, submitted_at)
+     VALUES (?, ?, ?, ?)`, rid, qn.id, JSON.stringify(answers), ts);
+  await run("UPDATE questionnaires SET status = 'responded' WHERE id = ?", qn.id);
 
   // Flip the vendor's DPA status from their answer. The vendors table has no
   // generic "status" column — dpa_status is the vendor lifecycle state.
-  const vendor = d
-    .prepare("SELECT id, name, dpa_status FROM vendors WHERE id = ?")
-    .get(q.vendor_id) as { id: string; name: string; dpa_status: string } | undefined;
+  const vendor = await qOne("SELECT id, name, dpa_status FROM vendors WHERE id = ?", qn.vendor_id) as { id: string; name: string; dpa_status: string } | undefined;
   const dpaAns = answers.dpa_signed.trim().toLowerCase();
   if (vendor) {
     if (dpaAns === "yes" && vendor.dpa_status !== "signed") {
-      d.prepare("UPDATE vendors SET dpa_status = 'signed' WHERE id = ?").run(vendor.id);
+      await run("UPDATE vendors SET dpa_status = 'signed' WHERE id = ?", vendor.id);
     } else if (dpaAns === "no" && vendor.dpa_status === "not_started") {
-      d.prepare("UPDATE vendors SET dpa_status = 'under_review' WHERE id = ?").run(vendor.id);
+      await run("UPDATE vendors SET dpa_status = 'under_review' WHERE id = ?", vendor.id);
     }
   }
 
-  record(
+  await record(
     "questionnaire.responded",
     "questionnaire",
-    q.id,
+    qn.id,
     `Questionnaire response received${vendor ? ` from ${vendor.name}` : ""}`,
     {
       response_id: rid,

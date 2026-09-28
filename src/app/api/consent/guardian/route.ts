@@ -1,4 +1,4 @@
-import { db, ok, bad, body, record, newId, nowIso, cors, corsPreflight } from "@/server/api";
+import { q, run, ok, bad, body, record, newId, nowIso, cors, corsPreflight } from "@/server/api";
 import { sha256 } from "@/server/db";
 
 export async function OPTIONS() {
@@ -15,9 +15,7 @@ function validContact(c: string): boolean {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const propertyId = url.searchParams.get("property_id") ?? "prop_main";
-  const rows = db()
-    .prepare(`SELECT * FROM guardian_consents WHERE property_id = ? ORDER BY created_at DESC LIMIT 500`)
-    .all(propertyId) as Array<Record<string, unknown>>;
+  const rows = await q(`SELECT * FROM guardian_consents WHERE property_id = ? ORDER BY created_at DESC LIMIT 500`, propertyId) as Array<Record<string, unknown>>;
   // node:sqlite rows carry a null prototype — normalize before JSON output.
   return ok({ consents: JSON.parse(JSON.stringify(rows)), property_id: propertyId });
 }
@@ -55,20 +53,17 @@ export async function POST(req: Request) {
     return cors(bad("consent_given must be true — the guardian must actively consent"));
   }
 
-  const d = db();
   const id = newId("gcn");
   const t = nowIso();
   const contact = b.contact.trim();
   const contactHash = sha256(contact);
-  d.prepare(
-    `INSERT INTO guardian_consents
+  await run(`INSERT INTO guardian_consents
        (id, property_id, visitor_hash, guardian_name, relationship, contact, contact_hash, consent_given, verified_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, ?)`
-  ).run(id, propertyId, b.visitor_hash.trim(), b.guardian_name.trim(), b.relationship, contact, contactHash, t);
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, ?)`, id, propertyId, b.visitor_hash.trim(), b.guardian_name.trim(), b.relationship, contact, contactHash, t);
 
   // Ledger entry references the guardian consent id + contact_hash. The raw
   // contact never leaves guardian_consents.
-  record(
+  await record(
     "guardian_consent.recorded",
     "guardian_consent",
     id,

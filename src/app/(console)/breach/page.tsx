@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { db } from "@/server/db";
+import { q } from "@/server/db";
 import { PageHead, Card, Chip, EmptyState, CountdownClock } from "@/components/ui";
 import { OpenBreachCase } from "./OpenBreachCase";
 import { ArrowUpRight, Check, Minus } from "lucide-react";
@@ -26,11 +26,8 @@ function sevTone(s: string): "red" | "amber" | "blue" | "mute" {
 
 const STEP_NAMES = ["Open & assess", "Contain & start clocks", "Notify the Board", "Notify affected users"];
 
-export default function BreachRegisterPage() {
-  const d = db();
-  const rows = d.prepare(
-    `SELECT * FROM breach_cases ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, awareness_at DESC`
-  ).all() as unknown as BreachRow[];
+export default async function BreachRegisterPage() {
+  const rows = await q(`SELECT * FROM breach_cases ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, awareness_at DESC`) as unknown as BreachRow[];
 
   const openCount = rows.filter((r) => r.status === "open").length;
 

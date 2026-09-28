@@ -1,9 +1,9 @@
-import { db, ok, bad, body, record, newId, nowIso, parseJson } from "@/server/api";
+import { q, qOne, run, ok, bad, body, record, newId, nowIso, parseJson } from "@/server/api";
 import { scanWebsite } from "@/server/scanner";
 
 /** GET /api/scan — recent scan runs. */
 export async function GET() {
-  const rows = db().prepare(`SELECT * FROM scans ORDER BY started_at DESC LIMIT 20`).all();
+  const rows = await q(`SELECT * FROM scans ORDER BY started_at DESC LIMIT 20`);
   return ok({
     scans: (rows as Array<Record<string, unknown>>).map((r) => ({
       ...r,
@@ -25,64 +25,53 @@ interface ScanBody {
 export async function POST(req: Request) {
   const b = await body<ScanBody>(req);
   if (!b?.url) return bad("url is required");
-  const d = db();
   const prop = b.property_id ?? "prop_main";
   const scanId = newId("scan");
   const started = nowIso();
-  d.prepare(`INSERT INTO scans (id, property_id, kind, status, started_at, stats_json) VALUES (?, ?, 'cookie', 'running', ?, '{}')`)
-    .run(scanId, prop, started);
+  await run(`INSERT INTO scans (id, property_id, kind, status, started_at, stats_json) VALUES (?, ?, 'cookie', 'running', ?, '{}')`, scanId, prop, started);
 
   const result = await scanWebsite(b.url);
   const finished = nowIso();
 
   if (!result.ok) {
-    d.prepare(`UPDATE scans SET status = 'failed', finished_at = ?, error = ? WHERE id = ?`)
-      .run(finished, result.error ?? "unknown", scanId);
-    record("scan.failed", "scan", scanId, `Cookie scan failed for ${b.url}`, { error: result.error });
+    await run(`UPDATE scans SET status = 'failed', finished_at = ?, error = ? WHERE id = ?`, finished, result.error ?? "unknown", scanId);
+    await record("scan.failed", "scan", scanId, `Cookie scan failed for ${b.url}`, { error: result.error });
     return bad(result.error ?? "Scan failed", 502);
   }
 
   let added = 0;
   let seen = 0;
-  const upsert = d.prepare(
-    `INSERT INTO cookies (id, property_id, name, category, source, description, duration, vendor_hint, first_seen, last_seen)
-     VALUES (?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?)
-     ON CONFLICT(property_id, name) DO UPDATE SET last_seen = excluded.last_seen, vendor_hint = excluded.vendor_hint`
-  );
   for (const c of result.cookies) {
-    const existing = d.prepare("SELECT id FROM cookies WHERE property_id = ? AND name = ?").get(prop, c.name) as { id: string } | undefined;
+    const existing = await qOne("SELECT id FROM cookies WHERE property_id = ? AND name = ?", prop, c.name) as { id: string } | undefined;
     if (existing) {
       seen++;
-      d.prepare("UPDATE cookies SET last_seen = ? WHERE id = ?").run(finished, existing.id);
+      await run("UPDATE cookies SET last_seen = ? WHERE id = ?", finished, existing.id);
     } else {
-      upsert.run(newId("ck"), prop, c.name, c.category, `${c.evidence}.`, c.duration, c.vendor_hint, started, finished);
+      await run(`INSERT INTO cookies (id, property_id, name, category, source, description, duration, vendor_hint, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?)
+     ON CONFLICT(property_id, name) DO UPDATE SET last_seen = excluded.last_seen, vendor_hint = excluded.vendor_hint`, newId("ck"), prop, c.name, c.category, `${c.evidence}.`, c.duration, c.vendor_hint, started, finished);
       added++;
       if (c.category === "unclassified") {
-        d.prepare(
-          `INSERT INTO findings (id, category, title, detail, severity, status, legal_ref, source, created_at)
-           VALUES (?, 'consent', ?, ?, 'medium', 'needs_review', 'DPDP Act §6 — classify before use', 'cookie_scan', ?)`
-        ).run(newId("fnd"), `Unclassified cookie: ${c.name}`, `${c.evidence}. Classify it before relying on consent coverage.`, finished);
+        await run(`INSERT INTO findings (id, category, title, detail, severity, status, legal_ref, source, created_at)
+           VALUES (?, 'consent', ?, ?, 'medium', 'needs_review', 'DPDP Act §6 — classify before use', 'cookie_scan', ?)`, newId("fnd"), `Unclassified cookie: ${c.name}`, `${c.evidence}. Classify it before relying on consent coverage.`, finished);
       }
     }
   }
 
   // Auto-register tracker vendors discovered via scan
   for (const host of result.third_party_domains) {
-    const known = d.prepare("SELECT id FROM vendors WHERE domain LIKE ?").get(`%${host}%`);
+    const known = await qOne("SELECT id FROM vendors WHERE domain LIKE ?", `%${host}%`);
     if (!known) {
       const vendorName = host.replace(/^www\./, "").split(".")[0];
       const name = vendorName.charAt(0).toUpperCase() + vendorName.slice(1);
-      d.prepare(
-        `INSERT INTO vendors (id, name, category, domain, country, dpa_status, risk_tier, owner, discovered_via, created_at)
-         VALUES (?, ?, 'Discovered tracker', ?, 'Unknown', 'not_started', 'medium', '', 'cookie_scan', ?)`
-      ).run(newId("ven"), name, host, finished);
+      await run(`INSERT INTO vendors (id, name, category, domain, country, dpa_status, risk_tier, owner, discovered_via, created_at)
+         VALUES (?, ?, 'Discovered tracker', ?, 'Unknown', 'not_started', 'medium', '', 'cookie_scan', ?)`, newId("ven"), name, host, finished);
     }
   }
 
   const stats = { pages_crawled: result.pages_crawled, cookies_found: result.cookies.length, new_since_last: added, third_party_domains: result.third_party_domains };
-  d.prepare(`UPDATE scans SET status = 'complete', finished_at = ?, stats_json = ? WHERE id = ?`)
-    .run(finished, JSON.stringify(stats), scanId);
-  record("scan.completed", "scan", scanId, `Cookie scan of ${result.url}: ${result.cookies.length} cookies, ${added} new`, stats);
+  await run(`UPDATE scans SET status = 'complete', finished_at = ?, stats_json = ? WHERE id = ?`, finished, JSON.stringify(stats), scanId);
+  await record("scan.completed", "scan", scanId, `Cookie scan of ${result.url}: ${result.cookies.length} cookies, ${added} new`, stats);
 
   return ok({ scan_id: scanId, ...result, added, seen, note: result.note }, 201);
 }

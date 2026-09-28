@@ -1,4 +1,4 @@
-import { db, ok, bad, body, record, newId, nowIso, parseJson, ledgerVerify } from "@/server/api";
+import { q, ok, bad, body, record, newId, nowIso, parseJson, ledgerVerify } from "@/server/api";
 
 /**
  * GET /api/evidence — the evidence ledger.
@@ -6,9 +6,8 @@ import { db, ok, bad, body, record, newId, nowIso, parseJson, ledgerVerify } fro
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const d = db();
   if (url.searchParams.get("verify") === "1") {
-    const v = ledgerVerify(d);
+    const v = await ledgerVerify();
     return ok({ verify: v });
   }
   const et = url.searchParams.get("entity_type");
@@ -16,11 +15,11 @@ export async function GET(req: Request) {
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 500);
   let rows: Array<Record<string, unknown>>;
   if (et && eid) {
-    rows = d.prepare(`SELECT * FROM evidence_ledger WHERE entity_type = ? AND entity_id = ? ORDER BY seq DESC LIMIT ?`).all(et, eid, limit) as Array<Record<string, unknown>>;
+    rows = await q(`SELECT * FROM evidence_ledger WHERE entity_type = ? AND entity_id = ? ORDER BY seq DESC LIMIT ?`, et, eid, limit) as Array<Record<string, unknown>>;
   } else {
-    rows = d.prepare(`SELECT * FROM evidence_ledger ORDER BY seq DESC LIMIT ?`).all(limit) as Array<Record<string, unknown>>;
+    rows = await q(`SELECT * FROM evidence_ledger ORDER BY seq DESC LIMIT ?`, limit) as Array<Record<string, unknown>>;
   }
-  const v = ledgerVerify(d);
+  const v = await ledgerVerify();
   return ok({
     chain: { ok: v.ok, checked: v.checked, broken_at: v.brokenAt ?? null },
     entries: rows.map((r) => ({ ...r, details: parseJson(r.details_json as string, {}) })),
@@ -40,19 +39,16 @@ interface ExportBody {
 export async function POST(req: Request) {
   const b = await body<ExportBody>(req);
   if (!b?.entity_type || !b?.entity_id) return bad("entity_type and entity_id are required");
-  const d = db();
-  const rows = d.prepare(
-    `SELECT seq, ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash
-     FROM evidence_ledger WHERE entity_type = ? AND entity_id = ? ORDER BY seq ASC`
-  ).all(b.entity_type, b.entity_id) as Array<Record<string, unknown>>;
-  const v = ledgerVerify(d);
+  const rows = await q(`SELECT seq, ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash
+     FROM evidence_ledger WHERE entity_type = ? AND entity_id = ? ORDER BY seq ASC`, b.entity_type, b.entity_id) as Array<Record<string, unknown>>;
+  const v = await ledgerVerify();
   const pack = {
     exported_at: nowIso(),
     entity: { type: b.entity_type, id: b.entity_id },
     chain_verification: { ok: v.ok, entries_checked: v.checked },
     entries: rows.map((r) => ({ ...r, details: parseJson(r.details_json as string, {}) })),
   };
-  record("evidence.exported", b.entity_type, b.entity_id, `Evidence pack exported (${rows.length} entries)`, {
+  await record("evidence.exported", b.entity_type, b.entity_id, `Evidence pack exported (${rows.length} entries)`, {
     chain_ok: v.ok,
   });
   return ok({ pack });

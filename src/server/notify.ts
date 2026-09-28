@@ -6,7 +6,7 @@
  * mocked: if a provider is not configured, senders honestly report
  * "not_configured" and callers keep the log-only evidence behaviour.
  */
-import { db, parseJson } from "@/server/api";
+import { qOne, parseJson } from "@/server/api";
 
 export interface NotifyConfig {
   resendApiKey: string;
@@ -35,10 +35,8 @@ interface NotifySettings {
 }
 
 /** Read notification settings from tenant.settings_json (nested "notifications" key). */
-function readNotifySettings(): NotifySettings {
-  const row = db()
-    .prepare("SELECT settings_json FROM tenant WHERE id = ?")
-    .get(TENANT_ID) as { settings_json: string } | undefined;
+async function readNotifySettings(): Promise<NotifySettings> {
+  const row = await qOne<{ settings_json: string }>("SELECT settings_json FROM tenant WHERE id = ?", TENANT_ID);
   if (!row) return {};
   const settings = parseJson<Record<string, unknown>>(row.settings_json, {});
   const n = settings["notifications"];
@@ -52,8 +50,8 @@ export function maskSecret(raw: string): string {
   return `${s.slice(0, 3)}****${s.slice(-4)}`;
 }
 
-export function getNotifyConfig(): NotifyConfig {
-  const s = readNotifySettings();
+export async function getNotifyConfig(): Promise<NotifyConfig> {
+  const s = await readNotifySettings();
   const base = (s.resend_base_url ?? "").trim();
   return {
     resendApiKey: (s.resend_api_key ?? "").trim(),
@@ -65,8 +63,8 @@ export function getNotifyConfig(): NotifyConfig {
 }
 
 /** Overall sender status for UI/API surfaces. */
-export function getSenderStatus(): string {
-  const c = getNotifyConfig();
+export async function getSenderStatus(): Promise<string> {
+  const c = await getNotifyConfig();
   const parts: string[] = [];
   if (c.resendApiKey) parts.push("configured (resend)");
   if (c.whatsappWebhookUrl) parts.push("configured (whatsapp)");
@@ -100,7 +98,7 @@ function extractId(json: unknown, text: string): { id?: string } {
 
 /** Send an email via Resend. Honest "not_configured" when no API key is set. */
 export async function sendEmail(to: string, subject: string, bodyText: string): Promise<SendResult> {
-  const cfg = getNotifyConfig();
+  const cfg = await getNotifyConfig();
   if (!cfg.resendApiKey) return { ok: false, status: "not_configured" };
   if (!cfg.resendFrom) return { ok: false, status: "failed", error: "Resend sender identity is not set." };
   const url = cfg.resendBaseUrl.replace(/\/$/, "") + "/emails";
@@ -118,7 +116,7 @@ export async function sendEmail(to: string, subject: string, bodyText: string): 
 
 /** Send a WhatsApp message via the configured webhook. Honest "not_configured" when no URL is set. */
 export async function sendWhatsApp(to: string, bodyText: string): Promise<SendResult> {
-  const cfg = getNotifyConfig();
+  const cfg = await getNotifyConfig();
   if (!cfg.whatsappWebhookUrl) return { ok: false, status: "not_configured" };
   try {
     const r = await postJson(cfg.whatsappWebhookUrl, { to, message: bodyText }, cfg.whatsappBearer || undefined);

@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { db, parseJson, ledgerVerify } from "@/server/db";
+import { q, parseJson, ledgerVerify } from "@/server/db";
 import { PageHead, ProofSeal, EmptyState, Card, CardTitle } from "@/components/ui";
 import { ChainStatusCard } from "./ChainStatus";
 import { LedgerFilter } from "./LedgerFilter";
@@ -33,28 +33,22 @@ export default async function EvidencePage({
   searchParams: Promise<{ entity_type?: string; entity_id?: string }>;
 }) {
   const sp = await searchParams;
-  const d = db();
 
-  const v = ledgerVerify(d);
+  const v = await ledgerVerify();
   const chain = { ok: v.ok, checked: v.checked, brokenAt: v.brokenAt ?? null };
 
   const types = (
-    d.prepare(`SELECT DISTINCT entity_type AS t FROM evidence_ledger ORDER BY t`).all() as Array<{ t: string }>
-  ).map((r) => r.t);
+    await q(`SELECT DISTINCT entity_type AS t FROM evidence_ledger ORDER BY t`) as Array<{ t: string }>).map((r) => r.t);
 
   const et = (sp.entity_type ?? "").trim();
   const eid = (sp.entity_id ?? "").trim();
   let entries: Entry[];
   if (et && eid) {
-    entries = d
-      .prepare(`SELECT * FROM evidence_ledger WHERE entity_type = ? AND entity_id = ? ORDER BY seq DESC LIMIT 100`)
-      .all(et, eid) as unknown as Entry[];
+    entries = await q(`SELECT * FROM evidence_ledger WHERE entity_type = ? AND entity_id = ? ORDER BY seq DESC LIMIT 100`, et, eid) as unknown as Entry[];
   } else if (et) {
-    entries = d
-      .prepare(`SELECT * FROM evidence_ledger WHERE entity_type = ? ORDER BY seq DESC LIMIT 100`)
-      .all(et) as unknown as Entry[];
+    entries = await q(`SELECT * FROM evidence_ledger WHERE entity_type = ? ORDER BY seq DESC LIMIT 100`, et) as unknown as Entry[];
   } else {
-    entries = d.prepare(`SELECT * FROM evidence_ledger ORDER BY seq DESC LIMIT 100`).all() as unknown as Entry[];
+    entries = await q(`SELECT * FROM evidence_ledger ORDER BY seq DESC LIMIT 100`) as unknown as Entry[];
   }
   const filtering = Boolean(et || eid);
 

@@ -1,4 +1,4 @@
-import { db, ok, bad, body, record, parseJson, nowIso, cors, corsPreflight } from "@/server/api";
+import { q, qOne, ok, bad, body, record, parseJson, nowIso, cors, corsPreflight } from "@/server/api";
 import { consentAppend } from "@/server/db";
 
 export async function OPTIONS() {
@@ -10,9 +10,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const propertyId = url.searchParams.get("property_id") ?? "prop_main";
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 500);
-  const rows = db()
-    .prepare(`SELECT * FROM consent_events WHERE property_id = ? ORDER BY created_at DESC LIMIT ?`)
-    .all(propertyId, limit) as Array<Record<string, unknown>>;
+  const rows = await q(`SELECT * FROM consent_events WHERE property_id = ? ORDER BY created_at DESC LIMIT ?`, propertyId, limit) as Array<Record<string, unknown>>;
   return ok({
     events: rows.map((r) => ({ ...r, categories: parseJson(r.categories_json as string, {}) })),
     property_id: propertyId,
@@ -33,7 +31,7 @@ export async function POST(req: Request) {
   const b = await body<ConsentBody>(req);
   if (!b?.visitor_hash || !b?.categories) return bad("visitor_hash and categories are required");
 
-  const tenant = db().prepare("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'").get() as { settings_json: string };
+  const tenant = await qOne("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'") as { settings_json: string };
   const settings = parseJson<{ age_gating?: boolean }>(tenant.settings_json, {});
   let cats = b.categories;
   const band = b.age_band ?? "adult";
@@ -42,7 +40,7 @@ export async function POST(req: Request) {
     cats = { necessary: true, functional: false, analytics: false, marketing: false };
   }
 
-  const { id, event_hash } = consentAppend(db(), {
+  const { id, event_hash } = await consentAppend({
     property_id: b.property_id ?? "prop_main",
     visitor_hash: b.visitor_hash,
     age_band: band,
@@ -50,7 +48,7 @@ export async function POST(req: Request) {
     consent_mode: b.consent_mode ?? "banner",
     notice_version: b.notice_version ?? "v2.3",
   });
-  record("consent.recorded", "consent_event", id, `Consent recorded (${band}, mode: ${b.consent_mode ?? "banner"})`, {
+  await record("consent.recorded", "consent_event", id, `Consent recorded (${band}, mode: ${b.consent_mode ?? "banner"})`, {
     categories: cats,
     event_hash,
   });

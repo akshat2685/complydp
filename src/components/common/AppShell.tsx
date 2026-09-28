@@ -1,33 +1,31 @@
 import React from "react";
 import Link from "next/link";
-import { db } from "@/server/db";
+import { qOne } from "@/server/db";
 import { Seal } from "@/components/ui";
 import { NavLinks } from "./NavLinks";
 
-function getCounts() {
-  const d = db();
-  const q = (sql: string) => (d.prepare(sql).get() as { n: number }).n;
+async function getCounts() {
+  const count = async (sql: string): Promise<number> => ((await qOne(sql)) as { n: number }).n;
   return {
-    findings: q("SELECT COUNT(*) AS n FROM findings WHERE status = 'needs_review'"),
-    consent: q("SELECT COUNT(*) AS n FROM findings WHERE status = 'needs_review' AND category = 'consent'"),
-    dsr: q("SELECT COUNT(*) AS n FROM dsr_cases WHERE status IN ('new','in_progress','waiting')"),
-    breach: q("SELECT COUNT(*) AS n FROM breach_cases WHERE status = 'open'"),
-    unmapped: q("SELECT COUNT(*) AS n FROM data_fields WHERE mapped_activity_id = '' AND pii_category != 'none'"),
-    vendors: q("SELECT COUNT(*) AS n FROM vendors WHERE dpa_status IN ('not_started','under_review')"),
+    findings: await count("SELECT COUNT(*) AS n FROM findings WHERE status = 'needs_review'"),
+    consent: await count("SELECT COUNT(*) AS n FROM findings WHERE status = 'needs_review' AND category = 'consent'"),
+    dsr: await count("SELECT COUNT(*) AS n FROM dsr_cases WHERE status IN ('new','in_progress','waiting')"),
+    breach: await count("SELECT COUNT(*) AS n FROM breach_cases WHERE status = 'open'"),
+    unmapped: await count("SELECT COUNT(*) AS n FROM data_fields WHERE mapped_activity_id = '' AND pii_category != 'none'"),
+    vendors: await count("SELECT COUNT(*) AS n FROM vendors WHERE dpa_status IN ('not_started','under_review')"),
   };
 }
 
-function getTenant() {
-  const d = db();
-  const t = d.prepare("SELECT name, domain, dpo_name FROM tenant WHERE id = 'tenant_meridian'").get() as {
+async function getTenant() {
+  const t = await qOne("SELECT name, domain, dpo_name FROM tenant WHERE id = 'tenant_meridian'") as {
     name: string; domain: string; dpo_name: string;
   };
   return t;
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const counts = getCounts();
-  const tenant = getTenant();
+export async function AppShell({ children }: { children: React.ReactNode }) {
+  const counts = await getCounts();
+  const tenant = await getTenant();
 
   return (
     <div className="flex min-h-screen">

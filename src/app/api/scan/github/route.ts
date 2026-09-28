@@ -1,4 +1,4 @@
-import { db, ok, bad, body, record, newId, nowIso } from "@/server/api";
+import { q, qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
 import { classifyField } from "@/server/classify";
 import { githubHeaders, readGithubToken } from "@/server/github";
 
@@ -158,19 +158,17 @@ export async function POST(req: Request) {
   if (!owner || !repo) return bad("owner and repo are required");
   if (!nameRe.test(owner) || !nameRe.test(repo)) return bad("owner/repo contain invalid characters");
 
-  const token = readGithubToken();
+  const token = await readGithubToken();
   const headers = githubHeaders(token);
-  const d = db();
   const scanId = newId("scan");
   const started = nowIso();
   const repoName = `${owner}/${repo}`;
-  d.prepare(`INSERT INTO scans (id, property_id, kind, status, started_at, stats_json) VALUES (?, NULL, 'github', 'running', ?, '{}')`)
-    .run(scanId, started);
+  await run(`INSERT INTO scans (id, property_id, kind, status, started_at, stats_json) VALUES (?, NULL, 'github', 'running', ?, '{}')`, scanId, started);
 
-  const fail = (message: string, status: number) => {
+  const fail = async (message: string, status: number) => {
     const finished = nowIso();
-    d.prepare(`UPDATE scans SET status = 'failed', finished_at = ?, error = ? WHERE id = ?`).run(finished, message, scanId);
-    record("scan.failed", "scan", scanId, `GitHub scan failed for ${repoName}: ${message}`, { owner, repo });
+    await run(`UPDATE scans SET status = 'failed', finished_at = ?, error = ? WHERE id = ?`, finished, message, scanId);
+    await record("scan.failed", "scan", scanId, `GitHub scan failed for ${repoName}: ${message}`, { owner, repo });
     return bad(message, status);
   };
 
@@ -216,34 +214,29 @@ export async function POST(req: Request) {
 
     // 4. Persist: one codebase system for the repo (reused across scans).
     const sysName = repoName;
-    let sys = d.prepare(`SELECT id FROM systems WHERE name = ? AND kind = 'codebase'`).get(sysName) as
-      | { id: string }
+    let sys = await qOne(`SELECT id FROM systems WHERE name = ? AND kind = 'codebase'`, sysName) as | { id: string }
       | undefined;
     let systemId: string;
     if (sys) {
       systemId = sys.id;
     } else {
       systemId = newId("sys");
-      d.prepare(`INSERT INTO systems (id, name, kind, owner_team, description, created_at) VALUES (?, ?, 'codebase', 'Engineering', ?, ?)`)
-        .run(systemId, sysName, `GitHub repository scanned for personal-data fields (${branch}).`, started);
+      await run(`INSERT INTO systems (id, name, kind, owner_team, description, created_at) VALUES (?, ?, 'codebase', 'Engineering', ?, ?)`, systemId, sysName, `GitHub repository scanned for personal-data fields (${branch}).`, started);
     }
 
     const finished = nowIso();
     const note = `Found by GitHub scan of ${repoName}@${branch}`;
     const existing = new Set(
-      (d.prepare(`SELECT field_name FROM data_fields WHERE system_id = ?`).all(systemId) as Array<{ field_name: string }>)
+      (await q(`SELECT field_name FROM data_fields WHERE system_id = ?`, systemId) as Array<{ field_name: string }>)
         .map((r) => r.field_name)
-    );
-    const fieldStmt = d.prepare(
-      `INSERT INTO data_fields (id, system_id, field_name, pii_category, classification_source, mapped_activity_id, note)
-       VALUES (?, ?, ?, ?, 'auto', '', ?)`
     );
     let fieldsAdded = 0;
     for (const h of hits) {
       const fieldName = h.via === "path" ? h.path : `${h.path}: ${h.identifier}`;
       if (existing.has(fieldName)) continue;
       existing.add(fieldName);
-      fieldStmt.run(newId("fld"), systemId, fieldName, h.category, `${note} — ${h.reason} (${h.via === "path" ? "file path" : "code identifier"})`);
+      await run(`INSERT INTO data_fields (id, system_id, field_name, pii_category, classification_source, mapped_activity_id, note)
+       VALUES (?, ?, ?, ?, 'auto', '', ?)`, newId("fld"), systemId, fieldName, h.category, `${note} — ${h.reason} (${h.via === "path" ? "file path" : "code identifier"})`);
       fieldsAdded++;
     }
 
@@ -253,10 +246,6 @@ export async function POST(req: Request) {
       if (!byCat.has(h.category)) byCat.set(h.category, []);
       byCat.get(h.category)!.push(h);
     }
-    const findStmt = d.prepare(
-      `INSERT INTO findings (id, category, title, detail, severity, status, legal_ref, source, created_at)
-       VALUES (?, 'data_map', ?, ?, 'medium', 'needs_review', 'DPDP Act §4 — purpose limitation', 'github', ?)`
-    );
     let findingsAdded = 0;
     for (const [cat, list] of byCat) {
       const examples = list
@@ -264,12 +253,11 @@ export async function POST(req: Request) {
         .map((h) => `${h.path}${h.via === "path" ? "" : `: ${h.identifier}`} — ${h.reason}`)
         .join("\n");
       const more = list.length > 8 ? `\n… and ${list.length - 8} more.` : "";
-      findStmt.run(
-        newId("fnd"),
+      await run(`INSERT INTO findings (id, category, title, detail, severity, status, legal_ref, source, created_at)
+       VALUES (?, 'data_map', ?, ?, 'medium', 'needs_review', 'DPDP Act §4 — purpose limitation', 'github', ?)`, newId("fnd"),
         `GitHub scan: ${list.length} ${cat.replace(/_/g, " ")} field${list.length === 1 ? "" : "s"} in ${repoName}`,
         `The rule-based PII classifier flagged these in ${repoName}@${branch}:\n${examples}${more}\n\nMap them to processing activities in the data map.`,
-        finished
-      );
+        finished);
       findingsAdded++;
     }
 
@@ -284,9 +272,8 @@ export async function POST(req: Request) {
       fields_added: fieldsAdded,
       findings_added: findingsAdded,
     };
-    d.prepare(`UPDATE scans SET status = 'complete', finished_at = ?, stats_json = ? WHERE id = ?`)
-      .run(finished, JSON.stringify(stats), scanId);
-    record(
+    await run(`UPDATE scans SET status = 'complete', finished_at = ?, stats_json = ? WHERE id = ?`, finished, JSON.stringify(stats), scanId);
+    await record(
       "scan.github_completed",
       "scan",
       scanId,

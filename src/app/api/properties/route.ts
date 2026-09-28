@@ -1,11 +1,10 @@
-import { db, ok, parseJson } from "@/server/api";
+import { qOne, ok, parseJson } from "@/server/api";
 
 /** GET /api/properties — tenant + web property summary. */
 export async function GET() {
-  const d = db();
-  const t = d.prepare("SELECT * FROM tenant WHERE id = 'tenant_meridian'").get() as Record<string, unknown>;
+  const t = await qOne("SELECT * FROM tenant WHERE id = 'tenant_meridian'") as Record<string, unknown>;
   const settings = parseJson(t.settings_json as string, {});
-  const prop = d.prepare("SELECT * FROM properties WHERE id = 'prop_main'").get();
+  const prop = await qOne("SELECT * FROM properties WHERE id = 'prop_main'");
   const counts: Record<string, number> = {};
   for (const [k, sql] of Object.entries({
     cookies: "SELECT COUNT(*) AS n FROM cookies WHERE property_id = 'prop_main'",
@@ -17,7 +16,7 @@ export async function GET() {
     systems: "SELECT COUNT(*) AS n FROM systems",
     fields: "SELECT COUNT(*) AS n FROM data_fields",
   })) {
-    counts[k] = (d.prepare(sql).get() as { n: number }).n;
+    counts[k] = (await qOne(sql) as { n: number }).n;
   }
   return ok({ tenant: { ...t, settings }, property: prop, counts });
 }

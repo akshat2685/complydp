@@ -1,4 +1,4 @@
-import { db, ok, bad, body, parseJson, nowIso, record } from "@/server/api";
+import { qOne, run, ok, bad, body, parseJson, nowIso, record } from "@/server/api";
 import { maskSecret } from "@/server/notify";
 
 /**
@@ -6,9 +6,7 @@ import { maskSecret } from "@/server/notify";
  * Secrets are NEVER returned in full: only masked previews ("re_****abcd").
  */
 export async function GET() {
-  const d = db();
-  const row = d.prepare("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'").get() as
-    | { settings_json: string }
+  const row = await qOne("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'") as | { settings_json: string }
     | undefined;
   if (!row) return bad("Tenant not found", 404);
   const settings = parseJson<Record<string, unknown>>(row.settings_json, {});
@@ -54,9 +52,7 @@ const KEYS = ["resend_api_key", "resend_from", "resend_base_url", "whatsapp_webh
 export async function POST(req: Request) {
   const b = await body<NotificationsBody>(req);
   if (!b) return bad("Invalid JSON body");
-  const d = db();
-  const row = d.prepare("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'").get() as
-    | { settings_json: string }
+  const row = await qOne("SELECT settings_json FROM tenant WHERE id = 'tenant_meridian'") as | { settings_json: string }
     | undefined;
   if (!row) return bad("Tenant not found", 404);
   const settings = parseJson<Record<string, unknown>>(row.settings_json, {});
@@ -68,9 +64,9 @@ export async function POST(req: Request) {
   }
   settings["notifications"] = next;
 
-  d.prepare("UPDATE tenant SET settings_json = ? WHERE id = 'tenant_meridian'").run(JSON.stringify(settings));
+  await run("UPDATE tenant SET settings_json = ? WHERE id = 'tenant_meridian'", JSON.stringify(settings));
 
-  record(
+  await record(
     "tenant.notifications_updated",
     "tenant",
     "tenant_meridian",

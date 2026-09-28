@@ -1,4 +1,4 @@
-import { db, parseJson } from "@/server/db";
+import { qOne, parseJson } from "@/server/db";
 import { Seal, EmptyState } from "@/components/ui";
 import { notFound } from "next/navigation";
 import { QuestionnaireFormClient } from "./QuestionnaireFormClient";
@@ -15,22 +15,19 @@ export default async function PublicQuestionnairePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const d = db();
 
   // The token is the auth — an unknown token is a 404, not a login prompt.
-  const q = d.prepare("SELECT * FROM questionnaires WHERE token = ?").get(token) as
-    | { id: string; vendor_id: string; status: string }
+  const qn = await qOne("SELECT * FROM questionnaires WHERE token = ?", token) as | { id: string; vendor_id: string; status: string }
     | undefined;
 
-  if (!q) {
+  if (!qn) {
     notFound();
   }
 
-  const vendor = d.prepare("SELECT * FROM vendors WHERE id = ?").get(q.vendor_id) as
-    | { id: string; name: string; category: string }
+  const vendor = await qOne("SELECT * FROM vendors WHERE id = ?", qn.vendor_id) as | { id: string; name: string; category: string }
     | undefined;
 
-  const tenant = d.prepare("SELECT * FROM tenant LIMIT 1").get() as {
+  const tenant = await qOne("SELECT * FROM tenant LIMIT 1") as {
     name: string;
     domain: string;
     dpo_email: string;
@@ -40,7 +37,7 @@ export default async function PublicQuestionnairePage({
   const heading =
     settings.form_branding?.heading ?? "Vendor data-protection assessment";
 
-  if (q.status === "responded") {
+  if (qn.status === "responded") {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center px-4">
         <div className="w-full max-w-md">

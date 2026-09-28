@@ -1,13 +1,10 @@
-import { db, parseJson } from "@/server/db";
+import { q, parseJson } from "@/server/db";
 import { PageHead } from "@/components/ui";
 import { RightsDeskClient, CopyFormLink, StatCards, type DsrCase, type DsrTask } from "./RightsDeskClient";
 
-export default function RightsPage() {
-  const d = db();
+export default async function RightsPage() {
 
-  const rows = d.prepare(
-    `SELECT * FROM dsr_cases ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'waiting' THEN 2 ELSE 3 END, sla_due_at ASC`
-  ).all() as Array<Record<string, unknown>>;
+  const rows = await q(`SELECT * FROM dsr_cases ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'waiting' THEN 2 ELSE 3 END, sla_due_at ASC`) as Array<Record<string, unknown>>;
 
   const cases: DsrCase[] = rows.map((r) => ({
     id: r.id as string,

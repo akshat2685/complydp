@@ -1,4 +1,4 @@
-import { db, parseJson } from "@/server/db";
+import { qOne, parseJson } from "@/server/db";
 import { GET as healthCheck } from "@/app/api/health/route";
 import { PageHead, Card, CardTitle } from "@/components/ui";
 import { DangerZone } from "./DangerZone";
@@ -25,8 +25,7 @@ const CAPABILITY_LABELS: Array<[keyof Capabilities, string]> = [
 ];
 
 export default async function SettingsPage() {
-  const d = db();
-  const tenant = d.prepare(`SELECT * FROM tenant WHERE id = 'tenant_meridian'`).get() as {
+  const tenant = await qOne(`SELECT * FROM tenant WHERE id = 'tenant_meridian'`) as {
     name: string;
     domain: string;
     dpo_name: string;
@@ -39,7 +38,7 @@ export default async function SettingsPage() {
   const health = (await healthRes.json()) as { capabilities: Capabilities; evidence_ledger: { entries: number; chain: string } };
   const caps = health.capabilities;
 
-  const ghToken = readGithubToken();
+  const ghToken = await readGithubToken();
   const ghInitial = { configured: !!ghToken, masked: ghToken ? maskToken(ghToken) : null };
 
   return (

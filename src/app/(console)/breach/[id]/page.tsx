@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { db, parseJson } from "@/server/db";
+import { q, qOne, run, parseJson } from "@/server/db";
 import {
   PageHead,
   Card,
@@ -66,22 +66,21 @@ function channelTone(c: string): "blue" | "teal" | "amber" | "seal" | "mute" {
 
 export default async function BreachDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const d = db();
   // node:sqlite returns [Object: null prototype] rows — Next.js refuses to
   // serialize those into Client Components, so round-trip through JSON first.
-  const rawRow = d.prepare("SELECT * FROM breach_cases WHERE id = ?").get(id);
+  const rawRow = await qOne("SELECT * FROM breach_cases WHERE id = ?", id);
   if (!rawRow) notFound();
   const row = JSON.parse(JSON.stringify(rawRow)) as BreachRow;
 
   const tenant = JSON.parse(
-    JSON.stringify(d.prepare("SELECT name, dpo_email FROM tenant WHERE id = 'tenant_meridian'").get())
+    JSON.stringify(await qOne("SELECT name, dpo_email FROM tenant WHERE id = 'tenant_meridian'"))
   ) as {
     name: string;
     dpo_email: string;
   };
 
   const comms = JSON.parse(
-    JSON.stringify(d.prepare(`SELECT * FROM breach_comms WHERE breach_id = ? ORDER BY created_at DESC`).all(id))
+    JSON.stringify(await q(`SELECT * FROM breach_comms WHERE breach_id = ? ORDER BY created_at DESC`, id))
   ) as CommRow[];
 
   const systems = parseJson<string[]>(row.systems_json, []);

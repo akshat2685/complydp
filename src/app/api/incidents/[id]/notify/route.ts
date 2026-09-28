@@ -1,4 +1,4 @@
-import { db, ok, bad, body, record, newId, nowIso } from "@/server/api";
+import { q, qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
 import { sendEmail, sendWhatsApp, getSenderStatus } from "@/server/notify";
 
 interface NotifyBody {
@@ -21,8 +21,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!b?.channel || !b?.recipient || !b?.message) {
     return bad("channel, recipient and message are required");
   }
-  const d = db();
-  const breach = d.prepare("SELECT * FROM breach_cases WHERE id = ?").get(breachId) as Record<string, unknown> | undefined;
+  const breach = await qOne("SELECT * FROM breach_cases WHERE id = ?", breachId) as Record<string, unknown> | undefined;
   if (!breach) return bad("Breach not found", 404);
 
   const id = newId("comm");
@@ -58,19 +57,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // "not_configured" → keeps the honest "logged" behaviour.
   }
 
-  d.prepare(
-    `INSERT INTO breach_comms (id, breach_id, channel, recipient, subject, body, status, created_at, sent_at, provider_id, provider_response)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, breachId, b.channel, b.recipient, subject, b.message, status, t, status === "sent" ? t : null, provider_id, provider_response);
+  await run(`INSERT INTO breach_comms (id, breach_id, channel, recipient, subject, body, status, created_at, sent_at, provider_id, provider_response)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, breachId, b.channel, b.recipient, subject, b.message, status, t, status === "sent" ? t : null, provider_id, provider_response);
 
   if (b.channel === "board_email" && status === "sent") {
-    d.prepare("UPDATE breach_cases SET board_notified_at = ? WHERE id = ?").run(t, breachId);
+    await run("UPDATE breach_cases SET board_notified_at = ? WHERE id = ?", t, breachId);
   }
   if (["user_email", "user_whatsapp", "inapp"].includes(b.channel) && status === "sent") {
-    d.prepare("UPDATE breach_cases SET users_notified_at = COALESCE(users_notified_at, ?) WHERE id = ?").run(t, breachId);
+    await run("UPDATE breach_cases SET users_notified_at = COALESCE(users_notified_at, ?) WHERE id = ?", t, breachId);
   }
 
-  record("breach.notified", "breach_case", breachId,
+  await record("breach.notified", "breach_case", breachId,
     `Notification ${status} via ${b.channel} to ${b.recipient} for ${breach.code}`,
     { channel: b.channel, recipient: b.recipient, comm_id: id, status, provider_id }, "dpo");
   return ok({ id, status, logged_at: t, provider_id }, 201);
@@ -79,6 +76,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 /** GET /api/incidents/:id/notify — notification log for a breach, with live sender status. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: breachId } = await params;
-  const rows = db().prepare(`SELECT * FROM breach_comms WHERE breach_id = ? ORDER BY created_at DESC`).all(breachId);
-  return ok({ comms: rows, sender_status: getSenderStatus() });
+  const rows = await q(`SELECT * FROM breach_comms WHERE breach_id = ? ORDER BY created_at DESC`, breachId);
+  return ok({ comms: rows, sender_status: await getSenderStatus() });
 }
