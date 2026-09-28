@@ -27,6 +27,8 @@ const PUBLIC: Array<[string, RegExp]> = [
   ["POST", /^\/api\/q\//],
   ["GET", /^\/r\//],
   ["POST", /^\/api\/requests$/], // public DSR intake form
+  // TEMPORARY (2026-09-28): one-time demo-data wipe. Remove with the endpoint.
+  ["POST", /^\/api\/admin\/wipe$/],
 ];
 
 function isPublic(method: string, path: string): boolean {
