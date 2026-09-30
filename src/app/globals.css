@@ -3,54 +3,220 @@
 @tailwind utilities;
 
 :root {
-  --bg-main: #f8f9fa;
-  --bg-panel: #ffffff;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --border-light: #e2e8f0;
+  --paper: #f6f4ee;
+  --panel: #fffdf8;
+  --ink: #1c1a17;
+  --ink-soft: #3d3831;
+  --ink-muted: #6f675c;
+  --ink-faint: #a39e93;
+  --hairline: #e5dfd2;
+  --hairline-strong: #d3cbb6;
+  --seal: #a33327;
+  --seal-dark: #7e251c;
+  --teal: #0e5c55;
+}
+
+html {
+  background-color: var(--paper);
 }
 
 body {
-  background-color: var(--bg-main);
-  color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01";
 }
 
-/* Operational compact table styling */
-.op-table-header {
-  font-size: 11px;
+/* ---- Registry ledger table ---- */
+.ledger-head {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #475569;
-  background-color: #f1f5f9;
-  border-bottom: 1px solid #cbd5e1;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--hairline-strong);
+}
+.ledger-row {
+  border-bottom: 1px solid var(--hairline);
+  transition: background-color 0.12s ease;
+}
+.ledger-row:hover {
+  background-color: #f3efe4;
+}
+.ledger-row:last-child {
+  border-bottom: none;
 }
 
-.op-row {
-  border-bottom: 1px solid #e2e8f0;
-  transition: background-color 0.1s ease;
+/* ---- Ruled paper detail rows (definition lists) ---- */
+.rule-row {
+  border-bottom: 1px dashed var(--hairline);
+}
+.rule-row:last-child {
+  border-bottom: none;
 }
 
-.op-row:hover {
-  background-color: #f8fafc;
+/* ---- Kicker: small mono section label ---- */
+.kicker {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-faint);
 }
 
-/* Custom scrollbars for dense data workspaces */
-::-webkit-scrollbar {
+/* ---- Stamp / seal rotation for proof marks ---- */
+.seal-stamp {
+  transform: rotate(-6deg);
+}
+
+/* ---- Form controls ---- */
+.field {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.field::placeholder {
+  color: var(--ink-faint);
+}
+.field:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(14, 92, 85, 0.12);
+}
+select.field {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236f675c' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-ink {
+  background: var(--ink);
+  color: #f6f4ee;
+}
+.btn-ink:hover:not(:disabled) {
+  background: #000;
+}
+.btn-line {
+  background: var(--panel);
+  border-color: var(--hairline-strong);
+  color: var(--ink-soft);
+}
+.btn-line:hover:not(:disabled) {
+  border-color: var(--ink-muted);
+  color: var(--ink);
+}
+.btn-seal {
+  background: var(--seal);
+  color: #fff;
+}
+.btn-seal:hover:not(:disabled) {
+  background: var(--seal-dark);
+}
+.btn-teal {
+  background: var(--teal);
+  color: #fff;
+}
+.btn-teal:hover:not(:disabled) {
+  background: var(--teal-dark, #0a443f);
+}
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 11.5px;
+}
+
+/* ---- Status chip ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.chip .dot {
   width: 6px;
   height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+/* ---- Scrollbars: thin, paper-toned ---- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
+  background: var(--hairline-strong);
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--ink-faint);
+}
+
+/* ---- Drawer animation ---- */
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.drawer-in {
+  animation: drawer-in 0.18s ease-out;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+/* ---- Live clock tabular numerals ---- */
+.tnum {
+  font-variant-numeric: tabular-nums;
 }

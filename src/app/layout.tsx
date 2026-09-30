@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { AppProvider } from "@/context/AppContext";
 
 export const metadata: Metadata = {
-  title: "complyDP — Privacy Operations Center",
+  title: "Pramaan — Evidence-first privacy operations",
   description:
-    "AI-native Privacy Operations Center for India. Continuous discovery, classification, consent tracking, and regulatory obligation enforcement under the DPDP Act.",
+    "Pramaan is the evidence-first privacy operations registry for India's DPDP Act, 2023: consent ledger, rights desk, breach resolution, data mapping and tamper-evident proof.",
 };
 
 export default function RootLayout({
@@ -15,9 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-[#f8f9fa] antialiased">
-        <AppProvider>{children}</AppProvider>
-      </body>
+      <body className="min-h-screen antialiased">{children}</body>
     </html>
   );
 }

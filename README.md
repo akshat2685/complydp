@@ -1,148 +1,54 @@
-# complyDP
+# Pramaan
 
-> **AI-native Privacy Operations Center for India** — continuous discovery, classification, consent tracking, and regulatory obligation enforcement under the **Digital Personal Data Protection (DPDP) Act, 2023** & **DPDP Rules, 2026**.
+> **Evidence-first privacy operations for India's DPDP Act, 2023** — consent ledger, rights desk, breach resolution, data mapping and a tamper-evident proof chain. *Pramaan* (प्रमाण) means "proof" or "evidence".
 
-[![CI](https://github.com/akshat2685/complydp/actions/workflows/ci.yml/badge.svg)](https://github.com/akshat2685/complydp/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+This is a **working MVP**: every screen reads and writes a real SQLite database, consent events and registry actions are appended to a real SHA-256 hash chain, and the cookie scanner performs real server-side scans. No mock data, no fake sensors, no invented integrations.
 
----
+## What it does
 
-## Product Thesis
+- **Registry overview** — live attention queue, system state and ledger activity. Every number is read from the database.
+- **Consent Manager** — install snippet (real JS banner that posts to the API), banner configuration, **age-gating toggle** (under-18 → necessary-only cookies, recorded as `age_band=under18`), real cookie scans, and an append-only hash-chained consent log.
+- **Rights Desk** — Data Principal request cases (access / correction / deletion / third-party disclosure) with SLA clocks, task checklists and assignment — plus a **public hosted request form** at `/r/[property]`.
+- **Breach Resolution** — 4-step workflow (open → contain & start clocks → notify Board → notify users) with **live ticking statutory clocks** (72h Board deadline, "without delay" user notice), a notification log and a downloadable Board intimation pack.
+- **Data Map** — systems (databases, SaaS, codebases, websites), field inventory with **rule-based India-aware PII classification** (PAN, Aadhaar, UPI, IFSC… — honestly labelled, not "AI"), processing activities and derived data flows.
+- **Vendors** — processor register with DPA states and cross-border flags.
+- **Evidence** — the tamper-evident ledger: verify the full chain, filter by entity, export evidence packs with a verification receipt.
 
-compliance/privacy teams in India currently navigate fragmented data across websites, cookies, trackers, SaaS endpoints, codebases, databases, processors, consent logs, Data Principal requests, and incident reports.
+## What it honestly doesn't do (yet)
 
-**complyDP** unites these into a unified **Privacy Operations Control Room**:
+- The cookie scanner is a **static** server-side fetch — it does not execute JavaScript, so JS-set cookies can be missed.
+- PII classification is a **deterministic keyword engine**, not machine learning.
+- Breach notifications are **logged as evidence**; no real email/WhatsApp sender is wired.
+- GitHub codebase scanning needs a token and is not wired in the MVP.
 
-$$\text{DISCOVER} \longrightarrow \text{CLASSIFY} \longrightarrow \text{MAP} \longrightarrow \text{CONTROL} \longrightarrow \text{REVIEW} \longrightarrow \text{EVIDENCE} \longrightarrow \text{MONITOR}$$
+## Quickstart
 
-The core mental model:
-> *“What personal data exists, where does it move, why is it processed, who processes it, what controls apply, and can we prove it?”*
+Prerequisites: **Node.js 22+** (SQLite uses the native `node:sqlite` module — zero extra dependencies).
 
----
-
-## Key Modules
-
-- **Privacy Control Room**: Real-time attention queue answering *"What needs attention right now?"* — zero fake compliance scores; scannable operational findings with inline DPO approvals.
-- **Website Consent & Cookie Intelligence**: Headless crawler scanning properties (e.g. `asterpay.in`), classifying trackers, and detecting pre-consent tracking gaps under DPDP Section 6.
-- **Consent Event Ledger**: Cryptographically verifiable event stream with pseudonymous visitor hashes (`anon_sha256_...`) and zero raw PII storage.
-- **Data Principal Rights Portal**: Operational case management for deletion, access, correction, and third-party disclosures with statutory SLA countdown clocks.
-- **Incident Command Center**: Strict dual-clock separation:
-  - **DPBI Statutory Board Reporting Clock**: 72-hour regulatory countdown under Rule 11.
-  - **Data Principal Direct Notice**: *"Without Delay"* post-containment standard under Section 8(6).
-- **Data Discovery & Privacy Graph**: Static AST source code parser detecting Indian personal data tokens (`customer_phone`, `pan_number`, `dob`) with relational RoPA mapping: *Token → Category → Activity → Purpose → Asset → Vendor → Control → Evidence*.
-- **Evidence Locker**: Tamper-evident SHA-256 provenance chains anchoring every claim to observed telemetry with exportable regulatory audit packs.
-
----
-
-## Architecture
-
-```text
-                         ┌─────────────────────┐
-                         │   Web Application   │
-                         │ Next.js App Router  │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │      API Layer      │
-                         │ REST + Zod Validation
-                         └──────────┬──────────┘
-                                    │
-             ┌──────────────────────┼──────────────────────┐
-             │                      │                      │
-             ▼                      ▼                      ▼
-      ┌─────────────┐       ┌──────────────┐       ┌──────────────┐
-      │ Web Privacy │       │ Data Subject │       │  Incidents   │
-      │   Module    │       │   Requests   │       │    Module    │
-      └─────────────┘       └──────────────┘       └──────────────┘
-             │                      │                      │
-             └──────────────────────┼──────────────────────┘
-                                    ▼
-                         ┌─────────────────────┐
-                         │ Domain Services &   │
-                         │  Evidence Ledger    │
-                         └──────────┬──────────┘
-                                    │
-                  ┌─────────────────┼──────────────────┐
-                  │                 │                  │
-                  ▼                 ▼                  ▼
-           ┌────────────┐   ┌─────────────┐   ┌─────────────┐
-           │ PostgreSQL │   │ Redis Queue │   │ S3 Storage  │
-           │ (Drizzle)  │   │  (BullMQ)   │   │  (MinIO)    │
-           └────────────┘   └──────┬──────┘   └─────────────┘
-                                   │
-                                   ▼
-                           ┌──────────────┐
-                           │ Async Worker │
-                           └──────┬───────┘
-                                  │
-                 ┌────────────────┼─────────────────┐
-                 ▼                ▼                 ▼
-          Website Scanner   GitHub Scanner   AI Classification
-```
-
----
-
-## Tech Stack
-
-- **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS, Lucide Icons.
-- **Backend / API**: Typed Next.js REST API routes with Zod validation.
-- **Database**: PostgreSQL 16+ with Drizzle ORM schema and strict tenant isolation.
-- **Job Queue**: Redis 7+ with BullMQ async worker abstractions.
-- **Object Storage**: S3-compatible storage (MinIO for local development).
-- **CI / Testing**: Node test runner + tsx regulatory smoke test suite, GitHub Actions CI.
-
----
-
-## Quickstart & Local Development
-
-### 1. Prerequisites
-- Node.js 22+
-- npm 10+
-- Docker & Docker Compose
-
-### 2. Clone & Setup Environment
 ```bash
-git clone https://github.com/akshat2685/complydp.git
-cd complydp
-cp .env.example .env
+git clone <this-repo>
+cd pramaan-mvp
 npm install
-```
-
-### 3. Start Local Infrastructure
-```bash
-docker compose up -d
-```
-Starts PostgreSQL on `:5432`, Redis on `:6379`, and MinIO Object Storage on `:9000`.
-
-### 4. Seed Development Data
-```bash
-npm run db:seed
-```
-Seeds realistic tenant operational data for **AsterPay Technologies Pvt. Ltd.**
-
-### 5. Run the Application
-```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
----
+Open [http://localhost:3000](http://localhost:3000). The SQLite database (`./data/pramaan.db`) is created and seeded automatically on first boot with a fictional demo tenant (Meridian Foods Pvt. Ltd.).
 
-## Verification & Testing
+To reset demo data: Settings → Danger zone → Reset demo data (or `rm -rf data/` and restart).
 
-Run the automated smoke & regulatory test suite:
+## Verification
+
 ```bash
-npm test
+npm test        # live API smoke test (needs the dev server running)
+npm run build   # production build
 ```
 
-Run the production build:
-```bash
-npm run build
-```
+`GET /api/health` reports the database state, evidence-chain validity and an honest capability list.
 
----
+## Design
+
+The UI follows a **"Registry"** aesthetic — warm paper, ink text, hairline rules, serif display type, monospace for evidence — deliberately distinct from generic dashboard slop: every module has its own layout, and proof is a visual motif (seal marks, ledger tables, hash stamps).
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+MIT — see [LICENSE](LICENSE).

@@ -1,259 +1,88 @@
-"use client";
-
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import {
-  ShieldAlert,
-  SlidersHorizontal,
-  FileText,
-  AlertTriangle,
-  Network,
-  Building2,
-  Lock,
-  Settings,
-  ChevronRight,
-  RefreshCw,
-  Search,
-  Bell,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  ExternalLink,
-} from "lucide-react";
-import { useComplyDP } from "@/context/AppContext";
+import { qOne, getTenantId } from "@/server/db";
+import { Seal } from "@/components/ui";
+import { NavLinks } from "./NavLinks";
 
-interface NavItem {
-  name: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badgeCount?: (ctx: ReturnType<typeof useComplyDP>) => number;
+async function getCounts() {
+  const count = async (sql: string): Promise<number> => ((await qOne(sql)) as { n: number }).n;
+  return {
+    findings: await count("SELECT COUNT(*) AS n FROM findings WHERE status = 'needs_review'"),
+    consent: await count("SELECT COUNT(*) AS n FROM findings WHERE status = 'needs_review' AND category = 'consent'"),
+    dsr: await count("SELECT COUNT(*) AS n FROM dsr_cases WHERE status IN ('new','in_progress','waiting')"),
+    breach: await count("SELECT COUNT(*) AS n FROM breach_cases WHERE status = 'open'"),
+    unmapped: await count("SELECT COUNT(*) AS n FROM data_fields WHERE mapped_activity_id = '' AND pii_category != 'none'"),
+    vendors: await count("SELECT COUNT(*) AS n FROM vendors WHERE dpa_status IN ('not_started','under_review')"),
+  };
 }
 
-const navItems: NavItem[] = [
-  {
-    name: "Overview",
-    href: "/",
-    icon: ShieldAlert,
-    badgeCount: (ctx) => ctx.findings.filter((f) => f.status === "Needs Review").length,
-  },
-  {
-    name: "Consent",
-    href: "/consent",
-    icon: SlidersHorizontal,
-    badgeCount: (ctx) =>
-      ctx.findings.filter((f) => f.category === "Consent" && f.status === "Needs Review").length,
-  },
-  {
-    name: "Requests",
-    href: "/requests",
-    icon: FileText,
-    badgeCount: (ctx) =>
-      ctx.requests.filter((r) => r.status === "In Progress" || r.status === "Waiting").length,
-  },
-  {
-    name: "Incidents",
-    href: "/incidents",
-    icon: AlertTriangle,
-    badgeCount: (ctx) =>
-      ctx.incidents.filter((i) => i.status !== "Closed" && i.status !== "Remediated").length,
-  },
-  {
-    name: "Data Map",
-    href: "/data-map",
-    icon: Network,
-    badgeCount: (ctx) =>
-      ctx.personalDataFields.filter((f) => f.status === "Unmapped (AI Suggested)").length,
-  },
-  {
-    name: "Vendors",
-    href: "/vendors",
-    icon: Building2,
-    badgeCount: (ctx) => ctx.vendors.filter((v) => v.dpaStatus === "Under Review").length,
-  },
-  {
-    name: "Evidence",
-    href: "/evidence",
-    icon: Lock,
-  },
-  {
-    name: "Settings",
-    href: "/settings",
-    icon: Settings,
-  },
-];
+async function getTenant() {
+  const tid = await getTenantId();
+  if (!tid) return { name: "Pramaan", domain: "", dpo_name: "" };
+  const t = await qOne("SELECT name, domain, dpo_name FROM tenant WHERE id = ?", tid) as {
+    name: string; domain: string; dpo_name: string;
+  };
+  return t;
+}
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const ctx = useComplyDP();
-  const [showDemoGuide, setShowDemoGuide] = useState(false);
-
-  const pendingFindings = ctx.findings.filter((f) => f.status === "Needs Review").length;
+export async function AppShell({ children }: { children: React.ReactNode }) {
+  const counts = await getCounts();
+  const tenant = await getTenant();
 
   return (
-    <div className="flex min-h-screen bg-[#f8f9fa] text-[#0f172a]">
+    <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="w-64 border-r border-[#e2e8f0] bg-white flex flex-col fixed inset-y-0 z-30">
-        {/* Brand Header */}
-        <div className="p-4 border-b border-[#e2e8f0] flex items-center justify-between">
-          <div>
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-[#0f172a] text-white flex items-center justify-center font-bold text-xs rounded-sm">
-                DP
+      <aside className="w-[248px] shrink-0 border-r border-hairline-strong bg-paper-panel flex flex-col fixed inset-y-0 z-30">
+        <div className="px-4 pt-5 pb-4 border-b border-hairline">
+          <Link href="/" className="flex items-center gap-2.5">
+            <Seal size={34} />
+            <div>
+              <div className="font-display text-[19px] font-bold tracking-tight text-ink leading-none">
+                Pramaan
               </div>
-              <span className="font-semibold text-sm tracking-tight text-[#0f172a]">
-                complyDP
-              </span>
+              <div className="kicker mt-1" style={{ fontSize: 9 }}>
+                Privacy Evidence Registry
+              </div>
             </div>
-            <div className="text-[10px] text-[#64748b] uppercase tracking-wider font-mono mt-0.5">
-              Privacy Ops Center (India)
-            </div>
-          </div>
-          <span className="px-1.5 py-0.5 text-[10px] font-mono bg-blue-50 text-blue-700 border border-blue-200 rounded">
-            DPDP 2026
-          </span>
+          </Link>
         </div>
 
-        {/* Organization Badge */}
-        <div className="px-4 py-2.5 bg-[#f8fafc] border-b border-[#e2e8f0] text-xs">
-          <div className="text-[11px] text-[#64748b] font-medium">Tenant Property</div>
-          <div className="font-semibold text-[#0f172a] truncate">{ctx.tenant.name}</div>
-          <div className="text-[10px] text-[#475569] font-mono flex items-center mt-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-            {ctx.webProperty.domain} • DPO: {ctx.tenant.dpoName}
+        <div className="px-4 py-3 border-b border-hairline bg-paper">
+          <div className="kicker mb-1" style={{ fontSize: 9 }}>
+            Tenant
+          </div>
+          <div className="text-[12.5px] font-bold text-ink truncate">{tenant.name}</div>
+          <div className="text-[11px] text-ink-muted font-mono truncate">
+            {tenant.domain} · {tenant.dpo_name}
           </div>
         </div>
 
-        {/* Navigation Items */}
-        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive =
-              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            const count = item.badgeCount ? item.badgeCount(ctx) : 0;
-            const Icon = item.icon;
-
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-sm transition-colors ${
-                  isActive
-                    ? "bg-[#0f172a] text-white"
-                    : "text-[#475569] hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-                }`}
-              >
-                <div className="flex items-center space-x-2.5">
-                  <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-[#64748b]"}`} />
-                  <span>{item.name}</span>
-                </div>
-                {count > 0 && (
-                  <span
-                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
-                      isActive
-                        ? "bg-amber-400 text-slate-900"
-                        : "bg-amber-100 text-amber-800 border border-amber-200"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-2.5 py-3 overflow-y-auto">
+          <NavLinks counts={counts} />
         </nav>
 
-        {/* Guided Demo Walkthrough Box */}
-        <div className="p-3 border-t border-[#e2e8f0] bg-[#fafafa]">
-          <button
-            onClick={() => setShowDemoGuide(!showDemoGuide)}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded hover:bg-slate-50 transition"
-          >
-            <span className="flex items-center space-x-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              <span>Demo Walkthrough</span>
-            </span>
-            <ChevronRight
-              className={`w-3.5 h-3.5 transition-transform ${showDemoGuide ? "rotate-90" : ""}`}
-            />
-          </button>
-
-          {showDemoGuide && (
-            <div className="mt-2 p-2.5 text-[11px] bg-white border border-slate-200 rounded shadow-subtle space-y-1.5 text-slate-600">
-              <div className="font-semibold text-slate-800 flex items-center justify-between">
-                <span>AsterPay Demo Story</span>
-                <button
-                  onClick={ctx.resetToDemo}
-                  title="Reset Demo State"
-                  className="text-slate-400 hover:text-slate-700"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                </button>
-              </div>
-              <ol className="list-decimal pl-3 space-y-1 text-[10px] leading-tight">
-                <li>Check Overview: 12 findings in attention queue.</li>
-                <li>Go to Consent: review Segment tracker gap on checkout.</li>
-                <li>Approve classification: updates Data Map automatically.</li>
-                <li>Go to Data Map: run GitHub scan on core-checkout.</li>
-                <li>Approve phone/PAN mapping to KYC Onboarding.</li>
-                <li>View Incidents: observe DPBI 72h statutory clock.</li>
-              </ol>
-            </div>
-          )}
-        </div>
-
-        {/* Footer State */}
-        <div className="p-3 border-t border-[#e2e8f0] text-[10px] text-[#64748b] flex items-center justify-between">
-          <span className="flex items-center space-x-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Continuous Monitoring</span>
-          </span>
-          <button
-            onClick={ctx.resetToDemo}
-            className="text-[10px] text-slate-500 hover:text-slate-900 underline font-mono"
-          >
-            Reset
-          </button>
+        <div className="px-4 py-3 border-t border-hairline">
+          <div className="flex items-center gap-2 text-[11px] text-ink-muted">
+            <span className="w-1.5 h-1.5 rounded-full bg-status-green" />
+            <span className="font-mono">Ledger: SQLite · SHA-256 chained</span>
+          </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="pl-64 flex-1 flex flex-col min-w-0">
-        {/* Top Control Bar */}
-        <header className="h-12 border-b border-[#e2e8f0] bg-white sticky top-0 z-20 flex items-center justify-between px-6">
-          <div className="flex items-center space-x-3 text-xs">
-            <span className="font-semibold text-slate-900">
-              AsterPay Technologies Pvt. Ltd.
+      {/* Main */}
+      <div className="pl-[248px] flex-1 flex flex-col min-w-0">
+        <header className="h-12 border-b border-hairline-strong bg-paper-panel/90 backdrop-blur sticky top-0 z-20 flex items-center px-6">
+          <div className="flex items-center gap-2 text-[12px]">
+            <span className="font-bold text-ink">{tenant.name}</span>
+            <span className="text-hairline-strong">/</span>
+            <span className="text-ink-muted">DPDP Act, 2023</span>
+            <span className="text-hairline-strong">/</span>
+            <span className="font-mono text-[11px] text-ink-faint">
+              {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
             </span>
-            <span className="text-slate-300">/</span>
-            <span className="text-slate-600">Privacy Control Plane</span>
-            <span className="text-slate-300">/</span>
-            <span className="text-slate-500 font-mono text-[11px]">
-              DPDP Act 2023 § 4-11
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-3">
-            {pendingFindings > 0 && (
-              <Link
-                href="/"
-                className="flex items-center space-x-1.5 px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-900 border border-amber-200 rounded-sm hover:bg-amber-100 transition"
-              >
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                <span>{pendingFindings} items require review</span>
-              </Link>
-            )}
-
-            <div className="h-4 w-px bg-slate-200" />
-
-            <div className="flex items-center space-x-2 text-[11px] text-slate-600 font-mono">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span>Sensor Scan: Active</span>
-            </div>
           </div>
         </header>
-
-        {/* Page Content */}
-        <main className="flex-1 p-6 max-w-7xl w-full mx-auto">{children}</main>
+        <main className="flex-1 px-6 py-6 w-full max-w-[1200px] mx-auto">{children}</main>
       </div>
     </div>
   );
