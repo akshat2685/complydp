@@ -24,11 +24,27 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Smoke & Regulatory Tests
-        run: npm test
-
       - name: Production Build
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
           NODE_ENV: production
+
+      - name: Boot production server (smoke tests hit the live API)
+        run: |
+          PORT=3000 PRAMAAN_ADMIN_KEY=ci-admin-key nohup npm run start > /tmp/pramaan-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health > /dev/null; then echo "server up"; break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:3000/api/health
+
+      - name: Create test workspace
+        run: |
+          curl -sf -X POST http://localhost:3000/api/setup             -H "content-type: application/json"             -H "x-pramaan-key: ci-admin-key"             -d '{"company_name":"CI Check Ltd","domain":"ci.example.com","dpo_name":"CI DPO","dpo_email":"dpo@ci.example.com"}'
+
+      - name: Smoke & Regulatory Tests
+        run: npm test
+        env:
+          BASE_URL: http://localhost:3000
+          PRAMAAN_ADMIN_KEY: ci-admin-key
