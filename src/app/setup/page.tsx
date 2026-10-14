@@ -1,25 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "10px 12px",
-  fontSize: 14,
-  border: "1px solid var(--hairline-strong)",
-  borderRadius: 8,
-  background: "var(--paper)",
-  color: "var(--ink)",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 12.5,
-  fontWeight: 600,
-  color: "var(--ink-soft)",
-  marginBottom: 6,
-};
+import { Seal } from "@/components/ui";
 
 function Field(props: {
   label: string;
@@ -30,19 +12,19 @@ function Field(props: {
   hint?: string;
 }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <label style={labelStyle}>{props.label}</label>
+    <div className="mb-4">
+      <label className="mb-1.5 block text-[12.5px] font-semibold text-ink-soft">
+        {props.label}
+      </label>
       <input
         type={props.type ?? "text"}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
         placeholder={props.placeholder}
-        style={inputStyle}
+        className="field"
       />
       {props.hint && (
-        <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 5, lineHeight: 1.45 }}>
-          {props.hint}
-        </div>
+        <div className="mt-1.5 text-[12px] leading-relaxed text-ink-muted">{props.hint}</div>
       )}
     </div>
   );
@@ -94,91 +76,81 @@ export default function SetupPage() {
 
   if (checking) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--paper)", color: "var(--ink-muted)", fontSize: 14 }}>
-        Checking workspace…
+      <div className="flex min-h-screen items-center justify-center bg-paper">
+        <div className="flex items-center gap-3 text-ink-muted">
+          <Seal size={28} />
+          <span className="font-mono text-[12px] uppercase tracking-[0.14em]">
+            Checking workspace…
+          </span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "var(--paper)",
-        padding: 24,
-      }}
-    >
-      <form
-        onSubmit={submit}
-        style={{
-          width: "100%",
-          maxWidth: 440,
-          background: "var(--panel)",
-          border: "1px solid var(--hairline)",
-          borderRadius: 12,
-          padding: 32,
-        }}
-      >
-        <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)", marginBottom: 8 }}>
-          Pramaan · First-run setup
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 650, color: "var(--ink)", margin: "0 0 6px" }}>
-          Create your workspace
-        </h1>
-        <p style={{ fontSize: 13.5, color: "var(--ink-muted)", margin: "0 0 22px", lineHeight: 1.55 }}>
-          This deployment has no company data yet. Enter your organisation's details to create
-          its private privacy-ops workspace. This can only be done once.
-        </p>
-
-        <Field label="Company name" value={company} onChange={setCompany} placeholder="Acme Pvt. Ltd." />
-        <Field
-          label="Primary domain"
-          value={domain}
-          onChange={setDomain}
-          placeholder="acme.in"
-          hint="The website the consent banner will be installed on. A first property is created for this domain automatically."
-        />
-        <Field label="Data Protection Officer — name" value={dpoName} onChange={setDpoName} placeholder="Priya Sharma" />
-        <Field
-          label="Data Protection Officer — email"
-          type="email"
-          value={dpoEmail}
-          onChange={setDpoEmail}
-          placeholder="dpo@acme.in"
-          hint="Used as the contact in privacy notices and breach notifications."
-        />
-
-        {err && (
-          <div style={{ fontSize: 13, color: "#b3261e", background: "#fdecea", border: "1px solid #f5c6c0", borderRadius: 8, padding: "9px 12px", marginBottom: 16 }}>
-            {err}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={busy}
-          style={{
-            width: "100%",
-            padding: "11px 12px",
-            fontSize: 14.5,
-            fontWeight: 650,
-            borderRadius: 8,
-            border: "none",
-            background: "var(--ink)",
-            color: "var(--paper)",
-            cursor: busy ? "wait" : "pointer",
-            opacity: busy ? 0.7 : 1,
-          }}
+    <div className="flex min-h-screen items-center justify-center bg-paper px-6 py-10">
+      <div className="w-full max-w-[460px]">
+        <form
+          onSubmit={submit}
+          className="rounded-lg border border-hairline-strong bg-paper-panel p-8 shadow-card"
         >
-          {busy ? "Creating workspace…" : "Create workspace"}
-        </button>
-        <p style={{ fontSize: 12, color: "var(--ink-muted)", margin: "14px 0 0", lineHeight: 1.5 }}>
-          The workspace creation is written to the evidence ledger as its first entry.
+          <div className="flex items-center gap-3">
+            <Seal size={40} />
+            <div>
+              <div className="font-display text-[20px] font-bold leading-none tracking-tight text-ink">
+                Pramaan
+              </div>
+              <div className="kicker mt-1.5">First-run setup</div>
+            </div>
+          </div>
+
+          <div className="my-6 border-t border-hairline" />
+
+          <h1 className="font-display text-[19px] font-semibold text-ink">
+            Create your workspace
+          </h1>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-muted">
+            This deployment has no company data yet. Enter your organisation&apos;s details to
+            create its private privacy-ops workspace. This can only be done once.
+          </p>
+
+          <div className="mt-5">
+            <Field label="Company name" value={company} onChange={setCompany} placeholder="Acme Pvt. Ltd." />
+            <Field
+              label="Primary domain"
+              value={domain}
+              onChange={setDomain}
+              placeholder="acme.in"
+              hint="The website the consent banner will be installed on. A first property is created for this domain automatically."
+            />
+            <Field label="Data Protection Officer — name" value={dpoName} onChange={setDpoName} placeholder="Priya Sharma" />
+            <Field
+              label="Data Protection Officer — email"
+              type="email"
+              value={dpoEmail}
+              onChange={setDpoEmail}
+              placeholder="dpo@acme.in"
+              hint="Used as the contact in privacy notices and breach notifications."
+            />
+          </div>
+
+          {err && (
+            <div className="mb-4 rounded-md border border-seal/30 bg-seal-bg px-3 py-2 text-[12.5px] font-medium text-seal-dark">
+              {err}
+            </div>
+          )}
+
+          <button type="submit" disabled={busy} className="btn btn-ink w-full">
+            {busy ? "Creating workspace…" : "Create workspace"}
+          </button>
+          <p className="mt-3.5 text-[12px] leading-relaxed text-ink-muted">
+            The workspace creation is written to the evidence ledger as its first entry.
+          </p>
+        </form>
+        <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+          DPDP Act, 2023 · Evidence-first privacy operations
         </p>
-      </form>
+      </div>
     </div>
   );
 }

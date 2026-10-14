@@ -314,7 +314,7 @@ export function RightsDeskClient({ cases }: { cases: DsrCase[] }) {
                       checked={t.done}
                       disabled={saving || selected.status === "resolved"}
                       onChange={() => toggleTask(i)}
-                      className="mt-0.5 w-4 h-4 accent-[#0e5c55]"
+                      className="mt-0.5 w-4 h-4 accent-teal"
                     />
                     <span className={`text-[13px] ${t.done ? "line-through text-ink-faint" : "text-ink-soft"}`}>
                       {t.label}

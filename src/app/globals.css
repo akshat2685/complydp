@@ -14,6 +14,7 @@
   --seal: #a33327;
   --seal-dark: #7e251c;
   --teal: #0e5c55;
+  --red: #b91c1c;
 }
 
 html {
@@ -23,16 +24,15 @@ html {
 body {
   background-color: var(--paper);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-plex-sans), -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "ss01";
 }
 
 /* ---- Registry ledger table ---- */
 .ledger-head {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
@@ -61,12 +61,18 @@ body {
 
 /* ---- Kicker: small mono section label ---- */
 .kicker {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--ink-faint);
+}
+.kicker-xs {
+  font-size: 9px;
+}
+.kicker-danger {
+  color: var(--red);
 }
 
 /* ---- Stamp / seal rotation for proof marks ---- */
@@ -79,9 +85,9 @@ body {
   width: 100%;
   background: var(--panel);
   border: 1px solid var(--hairline-strong);
-  border-radius: 4px;
-  padding: 8px 10px;
-  font-size: 13px;
+  border-radius: 6px;
+  padding: 9px 11px;
+  font-size: 13.5px;
   color: var(--ink);
   outline: none;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
@@ -107,10 +113,10 @@ select.field {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
-  border-radius: 4px;
-  padding: 8px 14px;
+  border-radius: 6px;
+  padding: 8px 15px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.12s ease;
@@ -151,8 +157,8 @@ select.field {
   background: var(--teal-dark, #0a443f);
 }
 .btn-sm {
-  padding: 5px 10px;
-  font-size: 11.5px;
+  padding: 5px 11px;
+  font-size: 12px;
 }
 
 /* ---- Status chip ---- */
@@ -172,6 +178,16 @@ select.field {
   height: 6px;
   border-radius: 999px;
   background: currentColor;
+}
+
+/* ---- Selection + keyboard focus ---- */
+::selection {
+  background: rgba(163, 51, 39, 0.9);
+  color: var(--panel);
+}
+:focus-visible {
+  outline: 2px solid rgba(14, 92, 85, 0.55);
+  outline-offset: 2px;
 }
 
 /* ---- Scrollbars: thin, paper-toned ---- */
@@ -219,4 +235,17 @@ select.field {
 /* ---- Live clock tabular numerals ---- */
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- Reduced motion: no slide/fade for users who opt out ---- */
+@media (prefers-reduced-motion: reduce) {
+  .drawer-in,
+  .fade-in {
+    animation: none;
+  }
+  .ledger-row,
+  .field,
+  .btn {
+    transition: none;
+  }
 }

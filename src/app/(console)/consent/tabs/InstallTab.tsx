@@ -106,7 +106,7 @@ function BannerPreview({ banner }: { banner: BannerCfg }) {
                 type="checkbox"
                 checked={cats[k]}
                 onChange={(e) => setCats({ ...cats, [k]: e.target.checked })}
-                className="accent-[#a33327]"
+                className="accent-seal"
               />
               <span className="capitalize font-semibold">{k}</span>
             </label>

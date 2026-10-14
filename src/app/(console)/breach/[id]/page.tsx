@@ -172,7 +172,7 @@ export default async function BreachDetailPage({ params }: { params: Promise<{ i
         </div>
       </Card>
 
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid lg:grid-cols-2 items-start gap-5">
         {/* Notify composer */}
         <Card>
           <CardTitle>Notify</CardTitle>

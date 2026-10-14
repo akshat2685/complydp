@@ -33,7 +33,7 @@ export function Seal({ size = 32 }: { size?: number }) {
         y="30.5"
         textAnchor="middle"
         fill="#f6f4ee"
-        fontFamily="Georgia, 'Palatino Linotype', serif"
+        style={{ fontFamily: "var(--font-plex-serif)" }}
         fontWeight="bold"
         fontSize="17"
       >
@@ -133,7 +133,7 @@ export function CardTitle({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between mb-3">
+    <div className="flex flex-1 min-w-0 items-center justify-between gap-3 mb-3">
       <h2 className="font-display text-[16px] font-bold text-ink">{children}</h2>
       {right}
     </div>

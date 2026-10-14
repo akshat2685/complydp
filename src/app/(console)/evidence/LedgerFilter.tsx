@@ -30,7 +30,7 @@ export function LedgerFilter({ entityTypes }: { entityTypes: string[] }) {
         <label className="kicker block mb-1.5" htmlFor="et">
           Entity type
         </label>
-        <select id="et" className="field" value={type} onChange={(e) => setType(e.target.value)} style={{ width: 200 }}>
+        <select id="et" className="field w-[200px]" value={type} onChange={(e) => setType(e.target.value)}>
           <option value="">All types</option>
           {entityTypes.map((t) => (
             <option key={t} value={t}>
@@ -45,8 +45,7 @@ export function LedgerFilter({ entityTypes }: { entityTypes: string[] }) {
         </label>
         <input
           id="eid"
-          className="field font-mono"
-          style={{ width: 260 }}
+          className="field font-mono w-[260px]"
           placeholder="e.g. DSR-2026-0041"
           value={id}
           onChange={(e) => setId(e.target.value)}

@@ -62,7 +62,7 @@ export function ExportPack() {
           <label className="kicker block mb-1.5" htmlFor="xet">
             Entity type
           </label>
-          <input id="xet" className="field font-mono" style={{ width: 200 }} value={type} onChange={(e) => setType(e.target.value)} />
+          <input id="xet" className="field font-mono w-[200px]" value={type} onChange={(e) => setType(e.target.value)} />
         </div>
         <div>
           <label className="kicker block mb-1.5" htmlFor="xeid">
@@ -70,8 +70,7 @@ export function ExportPack() {
           </label>
           <input
             id="xeid"
-            className="field font-mono"
-            style={{ width: 260 }}
+            className="field font-mono w-[260px]"
             placeholder="e.g. breach_001"
             value={id}
             onChange={(e) => setId(e.target.value)}

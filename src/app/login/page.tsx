@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { Seal } from "@/components/ui";
 
 function LoginForm() {
   const sp = useSearchParams();
@@ -34,77 +35,57 @@ function LoginForm() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "var(--paper)",
-        padding: 24,
-      }}
-    >
-      <form
-        onSubmit={submit}
-        style={{
-          width: "100%",
-          maxWidth: 380,
-          background: "var(--panel)",
-          border: "1px solid var(--hairline)",
-          borderRadius: 12,
-          padding: 32,
-        }}
-      >
-        <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)", marginBottom: 8 }}>
-          Pramaan · Restricted
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 650, color: "var(--ink)", margin: "0 0 6px" }}>Console sign-in</h1>
-        <p style={{ fontSize: 13.5, color: "var(--ink-muted)", margin: "0 0 20px", lineHeight: 1.5 }}>
-          Enter the admin key to open the privacy-ops console.
-        </p>
-        <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 6 }}>
-          Admin key
-        </label>
-        <input
-          type="password"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          autoComplete="current-password"
-          autoFocus
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "10px 12px",
-            fontSize: 14,
-            border: "1px solid var(--hairline-strong)",
-            borderRadius: 8,
-            background: "#fff",
-            color: "var(--ink)",
-            marginBottom: 12,
-          }}
-        />
-        {err && (
-          <div style={{ fontSize: 13, color: "var(--seal)", marginBottom: 12 }}>{err}</div>
-        )}
-        <button
-          type="submit"
-          disabled={busy || !key}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            fontSize: 14,
-            fontWeight: 650,
-            color: "#fff",
-            background: "var(--seal)",
-            border: "none",
-            borderRadius: 8,
-            cursor: busy || !key ? "default" : "pointer",
-            opacity: busy || !key ? 0.6 : 1,
-          }}
+    <div className="flex min-h-screen items-center justify-center bg-paper px-6 py-10">
+      <div className="w-full max-w-[400px]">
+        <form
+          onSubmit={submit}
+          className="rounded-lg border border-hairline-strong bg-paper-panel p-8 shadow-card"
         >
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
+          <div className="flex items-center gap-3">
+            <Seal size={40} />
+            <div>
+              <div className="font-display text-[20px] font-bold leading-none tracking-tight text-ink">
+                Pramaan
+              </div>
+              <div className="kicker mt-1.5">Privacy Evidence Registry</div>
+            </div>
+          </div>
+
+          <div className="my-6 border-t border-hairline" />
+
+          <h1 className="font-display text-[19px] font-semibold text-ink">Console sign-in</h1>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-muted">
+            Enter the admin key to open the privacy-ops console.
+          </p>
+
+          <label
+            htmlFor="admin-key"
+            className="mb-1.5 mt-5 block text-[12.5px] font-semibold text-ink-soft"
+          >
+            Admin key
+          </label>
+          <input
+            id="admin-key"
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            autoComplete="current-password"
+            autoFocus
+            className="field"
+          />
+          {err && (
+            <div className="mt-3 rounded-md border border-seal/30 bg-seal-bg px-3 py-2 text-[12.5px] font-medium text-seal-dark">
+              {err}
+            </div>
+          )}
+          <button type="submit" disabled={busy || !key} className="btn btn-seal mt-5 w-full">
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+        <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+          DPDP Act, 2023 · Evidence-first privacy operations
+        </p>
+      </div>
     </div>
   );
 }

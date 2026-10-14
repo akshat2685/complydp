@@ -455,6 +455,13 @@ function ActivitiesSection({
         </Card>
       )}
 
+      {activities.length === 0 && (
+        <EmptyState
+          title="No processing activities yet"
+          body="Record why personal data is processed — purpose, lawful basis, retention — and link the vendors involved. Data flows are derived from these activities."
+        />
+      )}
+
       <div className="grid md:grid-cols-2 gap-4">
         {activities.map((a) => (
           <Card key={a.id}>

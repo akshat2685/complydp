@@ -48,10 +48,10 @@ export default async function SettingsPage() {
       <PageHead
         kicker="Settings"
         title="Workspace settings"
-        lede="Tenant identity, what this build honestly does, and the demo reset switch."
+        lede="Tenant identity, notification senders and integrations — and what this build honestly does."
       />
 
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid lg:grid-cols-2 items-start gap-5">
         {/* Tenant */}
         <Card>
           <CardTitle>Tenant</CardTitle>

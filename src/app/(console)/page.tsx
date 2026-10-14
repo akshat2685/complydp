@@ -56,7 +56,7 @@ export default async function OverviewPage() {
         {stats.map((s) => (
           <Link key={s.label} href={s.href}>
             <Card className="hover:border-hairline-strong transition-colors">
-              <div className={`font-display text-[30px] font-bold leading-none ${s.tone}`}>{s.value}</div>
+              <div className={`font-display text-[30px] font-bold leading-none tnum ${s.tone}`}>{s.value}</div>
               <div className="text-[12px] text-ink-muted mt-1.5">{s.label}</div>
             </Card>
           </Link>
@@ -68,7 +68,7 @@ export default async function OverviewPage() {
         <Card className="mb-6 border-status-red/40 bg-status-redBg/30">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="kicker mb-1" style={{ color: "#b91c1c" }}>
+              <div className="kicker kicker-danger mb-1">
                 Live statutory clock
               </div>
               <div className="font-display text-[17px] font-bold text-ink">
@@ -94,7 +94,7 @@ export default async function OverviewPage() {
         </Card>
       )}
 
-      <div className="grid lg:grid-cols-5 gap-5">
+      <div className="grid lg:grid-cols-5 gap-5 items-start">
         {/* Attention queue */}
         <Card pad={false} className="lg:col-span-3">
           <div className="p-5 pb-3">

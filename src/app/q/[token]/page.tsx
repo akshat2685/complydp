@@ -33,9 +33,9 @@ export default async function PublicQuestionnairePage({
     dpo_email: string;
     settings_json: string;
   } | undefined;
-  const settings = parseJson<{ form_branding?: { heading?: string } }>(tenant?.settings_json ?? "", {});
+  const settings = parseJson<{ form_branding?: { questionnaire_heading?: string } }>(tenant?.settings_json ?? "", {});
   const heading =
-    settings.form_branding?.heading ?? "Vendor data-protection assessment";
+    settings.form_branding?.questionnaire_heading ?? "Vendor data-protection assessment";
 
   if (qn.status === "responded") {
     return (

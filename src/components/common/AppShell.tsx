@@ -40,7 +40,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               <div className="font-display text-[19px] font-bold tracking-tight text-ink leading-none">
                 Pramaan
               </div>
-              <div className="kicker mt-1" style={{ fontSize: 9 }}>
+              <div className="kicker kicker-xs mt-1">
                 Privacy Evidence Registry
               </div>
             </div>
@@ -48,7 +48,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="px-4 py-3 border-b border-hairline bg-paper">
-          <div className="kicker mb-1" style={{ fontSize: 9 }}>
+          <div className="kicker kicker-xs mb-1">
             Tenant
           </div>
           <div className="text-[12.5px] font-bold text-ink truncate">{tenant.name}</div>
@@ -64,7 +64,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         <div className="px-4 py-3 border-t border-hairline">
           <div className="flex items-center gap-2 text-[11px] text-ink-muted">
             <span className="w-1.5 h-1.5 rounded-full bg-status-green" />
-            <span className="font-mono">Ledger: SQLite · SHA-256 chained</span>
+            <span className="font-mono">Evidence ledger · SHA-256 chained</span>
           </div>
         </div>
       </aside>
