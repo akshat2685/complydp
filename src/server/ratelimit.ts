@@ -1,6 +1,6 @@
 /**
- * Rate limiting for the public surface. Edge-compatible (no node: imports) so
- * it can run in middleware as well as in Node route handlers.
+ * Rate limiting for the public surface. Node.js only (route handlers and
+ * page server components).
  *
  * Buckets (sliding window, keyed by client IP):
  *   public-write — 20 req/min: POST /api/requests, POST /api/consent/events,
@@ -8,10 +8,12 @@
  *   public-read  — 60 req/min: GET /q/*, GET /r/*
  *
  * Primary: @upstash/ratelimit over Upstash Redis (UPSTASH_REDIS_REST_URL +
- * UPSTASH_REDIS_REST_TOKEN). When unset (local dev, CI) it falls back to an
- * in-memory sliding-window counter with the same limits and logs a one-line
- * warn at boot. The in-memory fallback is single-process only — fine for dev,
- * not a substitute for Redis in production.
+ * UPSTASH_REDIS_REST_TOKEN).
+ * Fallback: a sliding-window counter in the app database (rate_limit_hits
+ * table). The fallback is correct on every host because the state is shared;
+ * a previous in-memory fallback was removed — live verification proved
+ * module-level state does not persist across requests on Render, so an
+ * in-memory bucket silently never trips there.
  *
  * Returns null when the request may proceed, or a 429 JSON response
  * ({ok:false, error:"rate_limited"}) with a Retry-After header.
@@ -19,6 +21,7 @@
 import { NextResponse } from "next/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { qOne, run } from "./db";
 
 export type RateBucket = "public-write" | "public-read";
 
@@ -40,7 +43,7 @@ function getLimiters(): Record<RateBucket, Ratelimit> | null {
     if (!warned) {
       warned = true;
       // One line at boot; never includes secrets.
-      console.warn("[pramaan] UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN not set — rate limiting uses the in-memory fallback (single-process only)");
+      console.warn("[pramaan] UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN not set — rate limiting uses the database-backed fallback (shared state, correct on every host)");
     }
     return null;
   }
@@ -62,36 +65,29 @@ function getLimiters(): Record<RateBucket, Ratelimit> | null {
   return limiters;
 }
 
-/* In-memory sliding-window fallback: key -> sorted array of hit timestamps. */
-const memHits = new Map<string, number[]>();
-
-function memCheck(key: string, max: number, windowMs: number): { ok: boolean; retryAfter: number } {
+/* Database-backed sliding-window fallback: rate_limit_hits(bucket, ip, ts).
+ * Correct on every host because the counter state lives in the shared DB,
+ * not in process memory. Node.js only (uses the DB client). */
+async function dbCheck(
+  ip: string, bucket: RateBucket, max: number, windowMs: number
+): Promise<{ ok: boolean; retryAfter: number }> {
   const now = Date.now();
   const cutoff = now - windowMs;
-  const hits = (memHits.get(key) ?? []).filter((t) => t > cutoff);
-  if (hits.length >= max) {
-    memHits.set(key, hits);
-    return { ok: false, retryAfter: Math.max(1, Math.ceil((hits[0] + windowMs - now) / 1000)) };
+  // Opportunistic prune of this key's expired hits so the table stays small.
+  await run("DELETE FROM rate_limit_hits WHERE bucket = ? AND ip = ? AND ts <= ?", bucket, ip, cutoff);
+  const row = (await qOne<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM rate_limit_hits WHERE bucket = ? AND ip = ? AND ts > ?",
+    bucket, ip, cutoff
+  )) ?? { n: 0 };
+  if (row.n >= max) {
+    const oldest = (await qOne<{ t: number }>(
+      "SELECT MIN(ts) AS t FROM rate_limit_hits WHERE bucket = ? AND ip = ? AND ts > ?",
+      bucket, ip, cutoff
+    ))?.t ?? now;
+    return { ok: false, retryAfter: Math.max(1, Math.ceil((oldest + windowMs - now) / 1000)) };
   }
-  hits.push(now);
-  memHits.set(key, hits);
+  await run("INSERT INTO rate_limit_hits (bucket, ip, ts) VALUES (?, ?, ?)", bucket, ip, now);
   return { ok: true, retryAfter: 0 };
-}
-
-// Prune idle keys opportunistically so the map can't grow unboundedly
-// (memCheck's filter only trims keys that are hit again).
-try {
-  const pruner = setInterval(() => {
-    const now = Date.now();
-    for (const [k, hits] of memHits) {
-      if (hits.length === 0 || now - hits[hits.length - 1] > 60_000) memHits.delete(k);
-    }
-  }, 60_000);
-  // Don't keep a bare node process alive just for the pruner (Node only;
-  // edge runtimes have no unref).
-  (pruner as unknown as { unref?: () => void }).unref?.();
-} catch {
-  /* timer unavailable — growth is still bounded per accessed key */
 }
 
 export function getClientIp(req: Request): string {
@@ -124,16 +120,15 @@ export async function checkRateLimit(req: Request, bucket: RateBucket): Promise<
 }
 
 /**
- * Enforce the bucket for a bare client IP. Same limits/state as
- * checkRateLimit — for server components (public pages) and route handlers
- * running in Node, where module-level fallback state persists per process.
- * (Public page reads are enforced here in the page components rather than in
- * middleware: Edge isolates don't share module state across requests in
- * production, so a middleware-side in-memory check never accumulates. With
- * Upstash Redis configured this uses the shared Redis counters instead.)
+ * Enforce the bucket for a bare client IP. Node.js only (route handlers and
+ * page server components). Primary: Upstash Redis when configured; fallback:
+ * the database-backed sliding window (correct on every host — a previous
+ * in-memory fallback was removed after live verification proved process
+ * memory is not shared across requests on the production host).
  */
 export async function checkRateLimitByIp(ip: string, bucket: RateBucket): Promise<NextResponse | null> {
   const key = `${bucket}:${ip}`;
+  const { max, windowMs } = LIMITS[bucket];
   const ups = getLimiters();
   if (ups) {
     let res;
@@ -142,18 +137,16 @@ export async function checkRateLimitByIp(ip: string, bucket: RateBucket): Promis
     } catch (e) {
       if (!redisUnavailableLogged) {
         redisUnavailableLogged = true;
-        console.warn("[pramaan] Upstash rate-limit check failed, falling back to in-memory for this process");
+        console.warn("[pramaan] Upstash rate-limit check failed, falling back to the database counter");
       }
-      const { max, windowMs } = LIMITS[bucket];
-      const m = memCheck(`mem:${key}`, max, windowMs);
-      return m.ok ? null : rateLimited(m.retryAfter);
+      const d = await dbCheck(ip, bucket, max, windowMs);
+      return d.ok ? null : rateLimited(d.retryAfter);
     }
     if (!res.success) {
       return rateLimited(Math.max(1, Math.ceil((res.reset - Date.now()) / 1000)));
     }
     return null;
   }
-  const { max, windowMs } = LIMITS[bucket];
-  const m = memCheck(`mem:${key}`, max, windowMs);
-  return m.ok ? null : rateLimited(m.retryAfter);
+  const d = await dbCheck(ip, bucket, max, windowMs);
+  return d.ok ? null : rateLimited(d.retryAfter);
 }

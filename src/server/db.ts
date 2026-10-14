@@ -430,6 +430,18 @@ CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   created_at INTEGER NOT NULL
 );
+
+-- Rate-limit sliding-window hits (bucket + client IP + epoch ms).
+-- The limiter's fallback counter lives here instead of process memory:
+-- live verification proved module state is not shared across requests on
+-- the production host, so an in-memory bucket silently never trips.
+CREATE TABLE IF NOT EXISTS rate_limit_hits (
+  bucket TEXT NOT NULL,
+  ip TEXT NOT NULL,
+  ts INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_bucket_ip_ts
+  ON rate_limit_hits (bucket, ip, ts);
 `;
 
 async function migrate(client: Client) {
