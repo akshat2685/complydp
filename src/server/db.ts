@@ -425,6 +425,11 @@ CREATE TABLE IF NOT EXISTS notices (
   published_at TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL
+);
 `;
 
 async function migrate(client: Client) {

@@ -1,10 +1,14 @@
 import { qOne, run, ok, bad, body, record, nowIso } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /**
  * PATCH /api/consent/guardian/:id — verify action: marks the guardian consent
  * as verified by the org (sets verified_at). Console-only, same-origin.
  */
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function PATCH_impl(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const { id } = await params;
   const b = await body<{ action?: string }>(req);
   if (b?.action !== "verify") return bad("action must be 'verify'");
@@ -26,3 +30,5 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   );
   return ok({ id, verified_at: t });
 }
+
+export const PATCH = withApiLog(PATCH_impl);

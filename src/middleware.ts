@@ -1,8 +1,22 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { checkRateLimit } from "@/server/ratelimit";
 
 /**
  * Admin gate for the Pramaan console.
+ *
+ * NOTE on where the real auth check lives: this middleware runs on the Edge
+ * runtime (Next 15.1 has no stable Node.js middleware runtime — the
+ * experimental flag doesn't take effect), so it cannot use node:crypto or the
+ * DB client. It therefore acts as a COARSE gate: public paths pass, the
+ * `x-pramaan-key` header is checked against the env key, and for cookie
+ * auth it only checks that a well-formed session token is PRESENT.
+ *
+ * The AUTHORITATIVE check — SHA-256 hash of the presented cookie plus a
+ * timing-safe compare against the sessions table — runs in Node.js:
+ * in every admin API route via requireAdmin() (src/server/session.ts) and
+ * in the console layout. The raw admin key is never the cookie value; the
+ * cookie holds an opaque session token (see POST /api/auth/login).
  *
  * Active iff PRAMAAN_ADMIN_KEY is set. Public embed/ingest surface stays open:
  * the consent snippet, guardian submissions, public DSR intake, vendor
@@ -30,13 +44,26 @@ const PUBLIC: Array<[string, RegExp]> = [
 ];
 
 function isPublic(method: string, path: string): boolean {
-  if (path.startsWith("/_next/") || path === "/favicon.ico" || path === "/robots.txt") return true;
+  if (
+    path.startsWith("/_next/") ||
+    path === "/favicon.ico" ||
+    path === "/icon.svg" || // Seal favicon — must not 307 to /login for logged-out browsers
+    path === "/robots.txt"
+  )
+    return true;
   return PUBLIC.some(([m, re]) => m === method && re.test(path));
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const key = process.env.PRAMAAN_ADMIN_KEY;
   const path = req.nextUrl.pathname;
+
+  // Public-surface rate limit: 60 req/min per IP on the public page reads.
+  // (Public POST writes are limited inside their route handlers.)
+  if (req.method === "GET" && (/^\/q\//.test(path) || /^\/r\//.test(path))) {
+    const limited = await checkRateLimit(req, "public-read");
+    if (limited) return limited;
+  }
 
   if (!key) {
     // Dev stays open. Production refuses to serve anything but the health
@@ -52,9 +79,13 @@ export function middleware(req: NextRequest) {
 
   if (isPublic(req.method, path)) return NextResponse.next();
 
-  const cookie = req.cookies.get(ADMIN_COOKIE)?.value;
   const header = req.headers.get("x-pramaan-key");
-  if (cookie === key || header === key) return NextResponse.next();
+  if (header && header === key) return NextResponse.next();
+
+  // Coarse cookie gate: a session token must be present and well-formed
+  // (real tokens are 64 hex chars). Validity is enforced in Node — see above.
+  const token = req.cookies.get(ADMIN_COOKIE)?.value;
+  if (token && token.length >= 32) return NextResponse.next();
 
   if (path.startsWith("/api/")) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });

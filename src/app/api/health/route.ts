@@ -1,7 +1,8 @@
 import { qOne, ok, ledgerVerify, IS_REMOTE } from "@/server/api";
 import { readGithubToken } from "@/server/github";
+import { withApiLog } from "@/server/withApiLog";
 
-export async function GET() {
+async function GET_impl() {
   const backend = IS_REMOTE ? "turso (remote libsql)" : "sqlite (local file)";
   let database = "unreachable";
   let ledger: { entries: number; chain: string } = { entries: 0, chain: "unknown" };
@@ -40,3 +41,5 @@ export async function GET() {
     },
   });
 }
+
+export const GET = withApiLog(GET_impl);

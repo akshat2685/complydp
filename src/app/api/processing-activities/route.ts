@@ -1,7 +1,11 @@
 import { q, run, ok, bad, body, record, newId, nowIso, parseJson } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/processing-activities — RoPA-style register with linked vendors. */
-export async function GET() {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const acts = await q(`SELECT * FROM processing_activities ORDER BY name`) as Array<Record<string, unknown>>;
   const links = await q(`SELECT av.activity_id, v.id, v.name, v.dpa_status FROM activity_vendors av JOIN vendors v ON v.id = av.vendor_id`) as Array<{ activity_id: string; id: string; name: string; dpa_status: string }>;
   const byAct: Record<string, Array<{ id: string; name: string; dpa_status: string }>> = {};
@@ -18,7 +22,9 @@ export async function GET() {
 }
 
 /** POST /api/processing-activities — add an activity. */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{
     name: string; purpose?: string; owner_team?: string; data_subjects?: string[];
     lawful_basis?: string; retention?: string; vendor_ids?: string[];
@@ -33,3 +39,6 @@ export async function POST(req: Request) {
   await record("activity.created", "processing_activity", id, `Processing activity created: ${b.name}`, {});
   return ok({ id }, 201);
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);

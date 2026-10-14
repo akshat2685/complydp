@@ -1,11 +1,16 @@
 import { q, qOne, run, ok, bad, body, record, newId, nowIso, parseJson } from "@/server/api";
 import { sendEmail } from "@/server/notify";
+import { checkRateLimit } from "@/server/ratelimit";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 const DSR_TYPES = ["access", "correction", "deletion", "disclosure"] as const;
 const SLA_HOURS: Record<string, number> = { access: 72, correction: 72, deletion: 72, disclosure: 72 };
 
 /** GET /api/requests?status= — DSR cases. */
-export async function GET(req: Request) {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const status = new URL(req.url).searchParams.get("status");
   const rows = (status
     ? await q(`SELECT * FROM dsr_cases WHERE status = ? ORDER BY created_at DESC`, status)
@@ -23,7 +28,9 @@ interface DsrBody {
 }
 
 /** POST /api/requests — file a new DSR (used by the public hosted form). */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __limited = await checkRateLimit(req, "public-write");
+  if (__limited) return __limited;
   const b = await body<DsrBody>(req);
   if (!b?.type || !b?.requester_name || !b?.requester_email) {
     return bad("type, requester_name and requester_email are required");
@@ -49,7 +56,9 @@ export async function POST(req: Request) {
 }
 
 /** PATCH /api/requests — update status / assignee / tasks / resolution. */
-export async function PATCH(req: Request) {
+async function PATCH_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{
     id: string; status?: string; assignee?: string; tasks?: Array<{ label: string; done: boolean }>;
     resolution_note?: string;
@@ -135,3 +144,7 @@ export async function PATCH(req: Request) {
 
   return ok({ id: b.id, email_status });
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);
+export const PATCH = withApiLog(PATCH_impl);

@@ -1,6 +1,8 @@
 import { q, qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
 import { classifyField } from "@/server/classify";
 import { githubHeaders, readGithubToken } from "@/server/github";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /**
  * POST /api/scan/github — real codebase scan of a GitHub repo.
@@ -150,7 +152,9 @@ function classifyContent(path: string, content: string): PiiHit[] {
   return hits;
 }
 
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<ScanBody>(req);
   const owner = (b?.owner ?? "").trim();
   const repo = (b?.repo ?? "").trim();
@@ -309,3 +313,5 @@ export async function POST(req: Request) {
     return fail(e instanceof Error ? e.message : "Scan failed", 502);
   }
 }
+
+export const POST = withApiLog(POST_impl);

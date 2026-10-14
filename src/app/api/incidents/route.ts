@@ -1,7 +1,11 @@
 import { q, qOne, run, ok, bad, body, record, newId, nowIso, parseJson } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/incidents — breach cases with live clock data. */
-export async function GET() {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const rows = await q(`SELECT * FROM breach_cases ORDER BY created_at DESC`) as Array<Record<string, unknown>>;
   const comms = await q(`SELECT breach_id, COUNT(*) AS n FROM breach_comms GROUP BY breach_id`) as Array<{ breach_id: string; n: number }>;
   const commCount: Record<string, number> = {};
@@ -31,7 +35,9 @@ interface BreachBody {
 }
 
 /** POST /api/incidents — open a breach case (step 0). */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<BreachBody>(req);
   if (!b?.title) return bad("title is required");
   const n = (await qOne("SELECT COUNT(*) AS n FROM breach_cases") as { n: number }).n;
@@ -46,7 +52,9 @@ export async function POST(req: Request) {
 }
 
 /** PATCH /api/incidents — advance step / update fields / close. */
-export async function PATCH(req: Request) {
+async function PATCH_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{
     id: string; step?: number; status?: string; severity?: string; title?: string;
     description?: string; affected_count?: number; board_notified_at?: string; users_notified_at?: string;
@@ -81,3 +89,7 @@ export async function PATCH(req: Request) {
   }
   return ok({ id: b.id });
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);
+export const PATCH = withApiLog(PATCH_impl);

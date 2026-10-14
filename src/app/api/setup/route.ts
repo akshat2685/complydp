@@ -1,5 +1,7 @@
 import { qOne, run, newId, nowIso, ledgerAppend } from "@/server/db";
 import { ok, bad, body } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /**
  * POST /api/setup — first-run workspace setup. Creates the deployment's
@@ -20,7 +22,9 @@ interface SetupBody {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))*\.[a-z]{2,}$/i;
 
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const existing = await qOne<{ id: string }>(`SELECT id FROM tenant LIMIT 1`);
   if (existing) return bad("Workspace is already set up", 409);
 
@@ -79,7 +83,12 @@ export async function POST(req: Request) {
 }
 
 /** GET /api/setup — has the workspace been set up yet? */
-export async function GET() {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const existing = await qOne<{ id: string }>(`SELECT id FROM tenant LIMIT 1`);
   return ok({ setup_complete: !!existing });
 }
+
+export const POST = withApiLog(POST_impl);
+export const GET = withApiLog(GET_impl);

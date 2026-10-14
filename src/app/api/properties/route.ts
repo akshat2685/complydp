@@ -1,7 +1,11 @@
 import { qOne, ok, bad, parseJson, getTenantId, getDefaultPropertyId } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/properties — tenant + web property summary. */
-export async function GET() {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const tid = await getTenantId();
   if (!tid) return bad("Workspace is not set up yet", 503);
   const t = await qOne("SELECT * FROM tenant WHERE id = ?", tid) as Record<string, unknown>;
@@ -29,3 +33,5 @@ export async function GET() {
   }
   return ok({ tenant: { ...t, settings }, property: prop, counts });
 }
+
+export const GET = withApiLog(GET_impl);

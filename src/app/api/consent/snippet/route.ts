@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cors, corsPreflight } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
 
 /**
  * GET /api/consent/snippet — the installable consent banner.
@@ -11,7 +12,7 @@ import { cors, corsPreflight } from "@/server/api";
  * the banner, enforces age-gating, and POSTs each choice to
  * /api/consent/events where it is hash-chained into the consent log.
  */
-export async function OPTIONS() {
+async function OPTIONS_impl() {
   return corsPreflight();
 }
 
@@ -200,10 +201,13 @@ const SNIPPET = `(function () {
   }
 })();`;
 
-export async function GET() {
+async function GET_impl() {
   const res = new NextResponse(SNIPPET, {
     status: 200,
     headers: { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=300" },
   });
   return cors(res);
 }
+
+export const OPTIONS = withApiLog(OPTIONS_impl);
+export const GET = withApiLog(GET_impl);

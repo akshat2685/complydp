@@ -1,11 +1,15 @@
 import { qOne, run, ok, bad, body, parseJson, nowIso, record, getTenantId } from "@/server/api";
 import { maskSecret } from "@/server/notify";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /**
  * GET /api/admin/notifications — notification provider config for the tenant.
  * Secrets are NEVER returned in full: only masked previews ("re_****abcd").
  */
-export async function GET() {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const tid = await getTenantId();
   if (!tid) return bad("Workspace is not set up yet", 503);
   const row = await qOne("SELECT settings_json FROM tenant WHERE id = ?", tid) as | { settings_json: string }
@@ -51,7 +55,9 @@ const KEYS = ["resend_api_key", "resend_from", "resend_base_url", "whatsapp_webh
  * replaced; every other setting is preserved. Empty-string values CLEAR that
  * field (so a rotated/leaked key can be removed from the UI).
  */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<NotificationsBody>(req);
   if (!b) return bad("Invalid JSON body");
   const tid = await getTenantId();
@@ -95,3 +101,6 @@ export async function POST(req: Request) {
     },
   });
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);

@@ -1,8 +1,12 @@
 import { q, qOne, run, ok, bad, body, record, newId, nowIso, parseJson, getDefaultPropertyId } from "@/server/api";
 import { scanWebsite } from "@/server/scanner";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/scan — recent scan runs. */
-export async function GET() {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const rows = await q(`SELECT * FROM scans ORDER BY started_at DESC LIMIT 20`);
   return ok({
     scans: (rows as Array<Record<string, unknown>>).map((r) => ({
@@ -22,7 +26,9 @@ interface ScanBody {
  * Persists new cookies, upserts seen ones, records the scan, and raises
  * findings for unclassified cookies.
  */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<ScanBody>(req);
   if (!b?.url) return bad("url is required");
   const prop = b.property_id ?? await getDefaultPropertyId();
@@ -76,3 +82,6 @@ export async function POST(req: Request) {
 
   return ok({ scan_id: scanId, ...result, added, seen, note: result.note }, 201);
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);

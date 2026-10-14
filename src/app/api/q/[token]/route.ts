@@ -1,5 +1,7 @@
 import { qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
 import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire";
+import { checkRateLimit } from "@/server/ratelimit";
+import { withApiLog } from "@/server/withApiLog";
 
 /** POST /api/q/:token — public vendor questionnaire submission.
  *
@@ -7,7 +9,9 @@ import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire";
  *  public vendor form). Rate-limiting is intentionally out of scope for the
  *  MVP — revisit before opening this to the open internet.
  */
-export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+async function POST_impl(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const __limited = await checkRateLimit(req, "public-write");
+  if (__limited) return __limited;
   const { token } = await params;
 
   const qn = await qOne("SELECT * FROM questionnaires WHERE token = ?", token) as | { id: string; vendor_id: string; token: string; status: string; created_at: string }
@@ -66,3 +70,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   return ok({ id: rid, submitted_at: ts }, 201);
 }
+
+export const POST = withApiLog(POST_impl);

@@ -1,7 +1,11 @@
 import { q, qOne, run, ok, bad, body, record, newId, nowIso, getDefaultPropertyId } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/cookies?property_id= — cookie inventory. */
-export async function GET(req: Request) {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const propertyId = new URL(req.url).searchParams.get("property_id") ?? await getDefaultPropertyId();
   if (!propertyId) return bad("Workspace is not set up yet", 503);
   const rows = await q(`SELECT * FROM cookies WHERE property_id = ? ORDER BY category, name`, propertyId);
@@ -18,7 +22,9 @@ interface CookieBody {
 }
 
 /** POST /api/cookies — add a cookie manually (source=manual). */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<CookieBody>(req);
   if (!b?.name) return bad("name is required");
   const t = nowIso();
@@ -39,7 +45,9 @@ export async function POST(req: Request) {
 }
 
 /** PATCH /api/cookies — reclassify a cookie (admin override). */
-export async function PATCH(req: Request) {
+async function PATCH_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{ id: string; category?: string; description?: string; vendor_hint?: string }>(req);
   if (!b?.id) return bad("id is required");
   const row = await qOne("SELECT * FROM cookies WHERE id = ?", b.id) as Record<string, unknown> | undefined;
@@ -52,3 +60,7 @@ export async function PATCH(req: Request) {
   });
   return ok({ id: b.id });
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);
+export const PATCH = withApiLog(PATCH_impl);

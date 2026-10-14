@@ -1,8 +1,12 @@
 import { qOne, run, ok, bad, body, record, parseJson, getTenantId } from "@/server/api";
 import { maskToken, readGithubToken } from "@/server/github";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/settings/github — token presence, masked. The raw value never leaves the server. */
-export async function GET() {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const token = await readGithubToken();
   return ok({ configured: !!token, masked: token ? maskToken(token) : null });
 }
@@ -16,7 +20,9 @@ interface TokenBody {
  * { token } saves it into tenant settings (read-modify-write, other keys kept);
  * an empty/missing token clears it.
  */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<TokenBody>(req);
   if (!b) return bad("Invalid JSON body");
   const tid = await getTenantId();
@@ -40,3 +46,6 @@ export async function POST(req: Request) {
   await record("settings.github_token_saved", "tenant", tid, "GitHub token saved (server-side, masked in UI)");
   return ok({ configured: true, masked: maskToken(token) });
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);

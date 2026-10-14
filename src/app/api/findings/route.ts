@@ -1,7 +1,11 @@
 import { q, qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/findings?status= — attention queue. */
-export async function GET(req: Request) {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const status = new URL(req.url).searchParams.get("status");
   const rows = (status
     ? await q(`SELECT * FROM findings WHERE status = ? ORDER BY created_at DESC`, status)
@@ -10,7 +14,9 @@ export async function GET(req: Request) {
 }
 
 /** PATCH /api/findings — resolve / reopen a finding. */
-export async function PATCH(req: Request) {
+async function PATCH_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{ id: string; status?: string; resolution_note?: string }>(req);
   if (!b?.id) return bad("id is required");
   const row = await qOne("SELECT * FROM findings WHERE id = ?", b.id) as Record<string, unknown> | undefined;
@@ -22,3 +28,6 @@ export async function PATCH(req: Request) {
   await record("finding.resolved", "finding", b.id, `Finding ${status}: ${row.title}`, { note: b.resolution_note ?? "" });
   return ok({ id: b.id, status });
 }
+
+export const GET = withApiLog(GET_impl);
+export const PATCH = withApiLog(PATCH_impl);

@@ -1,12 +1,16 @@
 import crypto from "node:crypto";
 import { qOne, run, ok, bad, record, newId, nowIso } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** POST /api/vendors/:id/questionnaire — send a DPDP questionnaire to a vendor.
  *  Creates a questionnaire row with an unguessable token and returns the
  *  public link (/qn/[token]). The token is the auth for the public form.
  *  Each send creates a fresh questionnaire, so a vendor can be re-assessed.
  */
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function POST_impl(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const { id } = await params;
   const vendor = await qOne("SELECT * FROM vendors WHERE id = ?", id) as { id: string; name: string } | undefined;
   if (!vendor) return bad("Vendor not found", 404);
@@ -24,7 +28,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 }
 
 /** GET /api/vendors/:id/questionnaire — latest questionnaire (+response) for a vendor. */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function GET_impl(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const { id } = await params;
   const vendor = await qOne("SELECT id FROM vendors WHERE id = ?", id);
   if (!vendor) return bad("Vendor not found", 404);
@@ -47,3 +53,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     },
   });
 }
+
+export const POST = withApiLog(POST_impl);
+export const GET = withApiLog(GET_impl);

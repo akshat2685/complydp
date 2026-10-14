@@ -1,11 +1,13 @@
 import { qOne, run, ok, bad, body, record, parseJson, cors, corsPreflight, getTenantId, getDefaultPropertyId } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/consent/config — banner config + age-gating toggle. */
-export async function OPTIONS() {
+async function OPTIONS_impl() {
   return corsPreflight();
 }
 
-export async function GET() {
+async function GET_impl() {
   const tid = await getTenantId();
   if (!tid) return bad("Workspace is not set up yet", 503);
   const t = await qOne("SELECT * FROM tenant WHERE id = ?", tid) as Record<string, unknown>;
@@ -16,7 +18,9 @@ export async function GET() {
 }
 
 /** PUT /api/consent/config — update banner config / age gating. */
-export async function PUT(req: Request) {
+async function PUT_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{ age_gating?: boolean; banner?: Record<string, unknown>; notice_version?: string }>(req);
   if (!b) return bad("Invalid JSON body");
   const tid = await getTenantId();
@@ -35,3 +39,7 @@ export async function PUT(req: Request) {
   });
   return ok({ settings: next });
 }
+
+export const OPTIONS = withApiLog(OPTIONS_impl);
+export const GET = withApiLog(GET_impl);
+export const PUT = withApiLog(PUT_impl);

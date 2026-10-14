@@ -1,7 +1,10 @@
 import { q, run, ok, bad, body, record, newId, nowIso, cors, corsPreflight, getDefaultPropertyId } from "@/server/api";
 import { sha256 } from "@/server/db";
+import { checkRateLimit } from "@/server/ratelimit";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
-export async function OPTIONS() {
+async function OPTIONS_impl() {
   return corsPreflight();
 }
 
@@ -12,7 +15,9 @@ function validContact(c: string): boolean {
 }
 
 /** GET /api/consent/guardian?property_id= — newest first. Console-only (same-origin, no CORS). */
-export async function GET(req: Request) {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const url = new URL(req.url);
   const propertyId = url.searchParams.get("property_id") ?? await getDefaultPropertyId();
   if (!propertyId) return bad("Workspace is not set up yet", 503);
@@ -37,7 +42,9 @@ interface GuardianBody {
  * /api/consent/events). The raw contact is stored so the org can reach
  * guardians; the evidence ledger carries ONLY contact_hash — never the contact.
  */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __limited = await checkRateLimit(req, "public-write");
+  if (__limited) return cors(__limited);
   const b = await body<GuardianBody>(req);
   if (!b) return cors(bad("Invalid JSON body"));
   const propertyId = (b.property_id ?? (await getDefaultPropertyId()) ?? "").trim();
@@ -81,3 +88,7 @@ export async function POST(req: Request) {
 
   return cors(ok({ id, contact_hash: contactHash, verified_at: null }, 201));
 }
+
+export const OPTIONS = withApiLog(OPTIONS_impl);
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);

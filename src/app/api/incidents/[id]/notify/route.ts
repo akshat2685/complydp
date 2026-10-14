@@ -1,5 +1,7 @@
 import { q, qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
 import { sendEmail, sendWhatsApp, getSenderStatus } from "@/server/notify";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 interface NotifyBody {
   channel: "board_email" | "user_email" | "user_whatsapp" | "inapp";
@@ -15,7 +17,9 @@ interface NotifyBody {
  * WhatsApp webhook for user_whatsapp); inapp stays log-only. When no provider
  * is configured the notification is honestly LOGGED as evidence only.
  */
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function POST_impl(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const { id: breachId } = await params;
   const b = await body<NotifyBody>(req);
   if (!b?.channel || !b?.recipient || !b?.message) {
@@ -74,8 +78,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 }
 
 /** GET /api/incidents/:id/notify — notification log for a breach, with live sender status. */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function GET_impl(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const { id: breachId } = await params;
   const rows = await q(`SELECT * FROM breach_comms WHERE breach_id = ? ORDER BY created_at DESC`, breachId);
   return ok({ comms: rows, sender_status: await getSenderStatus() });
 }
+
+export const POST = withApiLog(POST_impl);
+export const GET = withApiLog(GET_impl);

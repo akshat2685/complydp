@@ -1,10 +1,14 @@
 import { q, ok, bad, body, record, newId, nowIso, parseJson, ledgerVerify } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /**
  * GET /api/evidence — the evidence ledger.
  * ?entity_type=&entity_id= filters; ?verify=1 runs a full chain check.
  */
-export async function GET(req: Request) {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const url = new URL(req.url);
   if (url.searchParams.get("verify") === "1") {
     const v = await ledgerVerify();
@@ -36,7 +40,9 @@ interface ExportBody {
  * POST /api/evidence — export an evidence pack: the entity's ledger entries
  * plus a chain verification receipt. This is the "proof" artifact.
  */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<ExportBody>(req);
   if (!b?.entity_type || !b?.entity_id) return bad("entity_type and entity_id are required");
   const rows = await q(`SELECT seq, ts, actor, action, entity_type, entity_id, summary, details_json, prev_hash, entry_hash
@@ -54,9 +60,15 @@ export async function POST(req: Request) {
   return ok({ pack });
 }
 
-export async function DELETE() {
+async function DELETE_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   return bad("The evidence ledger is append-only and cannot be modified.", 405);
 }
 void record;
 void newId;
 void nowIso;
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);
+export const DELETE = withApiLog(DELETE_impl);

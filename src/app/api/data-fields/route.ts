@@ -1,8 +1,12 @@
 import { q, qOne, run, ok, bad, body, record, newId } from "@/server/api";
 import { classifyField } from "@/server/classify";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/data-fields?system_id= — field inventory with PII classification. */
-export async function GET(req: Request) {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const sysId = new URL(req.url).searchParams.get("system_id");
   const rows = (sysId
     ? await q(`SELECT f.*, s.name AS system_name, s.kind AS system_kind FROM data_fields f JOIN systems s ON s.id = f.system_id WHERE f.system_id = ? ORDER BY f.field_name`, sysId)
@@ -22,7 +26,9 @@ interface FieldBody {
 }
 
 /** POST /api/data-fields — add a field; auto-classified by the rule engine. */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<FieldBody>(req);
   if (!b?.system_id || !b?.field_name) return bad("system_id and field_name are required");
   const c = classifyField(b.field_name);
@@ -37,7 +43,9 @@ export async function POST(req: Request) {
 }
 
 /** PATCH /api/data-fields — override classification or map to an activity. */
-export async function PATCH(req: Request) {
+async function PATCH_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{ id: string; pii_category?: string; mapped_activity_id?: string }>(req);
   if (!b?.id) return bad("id is required");
   const row = await qOne("SELECT * FROM data_fields WHERE id = ?", b.id) as Record<string, unknown> | undefined;
@@ -62,3 +70,7 @@ export async function PATCH(req: Request) {
   });
   return ok({ id: b.id });
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);
+export const PATCH = withApiLog(PATCH_impl);

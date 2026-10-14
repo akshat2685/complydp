@@ -1,13 +1,19 @@
 import { q, qOne, run, ok, bad, body, record, newId, nowIso } from "@/server/api";
+import { withApiLog } from "@/server/withApiLog";
+import { requireAdmin } from "@/server/session";
 
 /** GET /api/vendors — vendor register. */
-export async function GET() {
+async function GET_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const rows = await q(`SELECT * FROM vendors ORDER BY risk_tier DESC, name`);
   return ok({ vendors: rows });
 }
 
 /** POST /api/vendors — register a vendor. */
-export async function POST(req: Request) {
+async function POST_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{ name: string; category?: string; domain?: string; country?: string; owner?: string }>(req);
   if (!b?.name) return bad("name is required");
   const id = newId("ven");
@@ -18,7 +24,9 @@ export async function POST(req: Request) {
 }
 
 /** PATCH /api/vendors — update DPA status / risk / owner / notes. */
-export async function PATCH(req: Request) {
+async function PATCH_impl(req: Request) {
+  const __denied = await requireAdmin(req);
+  if (__denied) return __denied;
   const b = await body<{ id: string; dpa_status?: string; risk_tier?: string; owner?: string; notes?: string; category?: string }>(req);
   if (!b?.id) return bad("id is required");
   const row = await qOne("SELECT * FROM vendors WHERE id = ?", b.id) as Record<string, unknown> | undefined;
@@ -40,3 +48,7 @@ export async function PATCH(req: Request) {
   await record("vendor.updated", "vendor", b.id, `Vendor ${row.name} updated`, { dpa_status: b.dpa_status ?? row.dpa_status });
   return ok({ id: b.id });
 }
+
+export const GET = withApiLog(GET_impl);
+export const POST = withApiLog(POST_impl);
+export const PATCH = withApiLog(PATCH_impl);
