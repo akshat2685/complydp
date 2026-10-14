@@ -94,8 +94,13 @@ export function getClientIp(req: Request): string {
   return clientIpFromHeaders(req.headers);
 }
 
-/** Client IP from a Headers object — for server components (Node runtime). */
+/** Client IP from a Headers object — for server components (Node runtime).
+ * Header priority: cf-connecting-ip (set by Cloudflare, which fronts the
+ * production deployment — the only reliable client signal behind it),
+ * then x-forwarded-for (first entry), then x-real-ip. */
 export function clientIpFromHeaders(h: Headers): string {
+  const cf = h.get("cf-connecting-ip")?.trim();
+  if (cf) return cf;
   const fwd = h.get("x-forwarded-for");
   if (fwd) {
     const first = fwd.split(",")[0].trim();
