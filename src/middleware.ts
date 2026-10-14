@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { checkRateLimit } from "@/server/ratelimit";
 
 /**
  * Admin gate for the Pramaan console.
@@ -58,12 +57,12 @@ export async function middleware(req: NextRequest) {
   const key = process.env.PRAMAAN_ADMIN_KEY;
   const path = req.nextUrl.pathname;
 
-  // Public-surface rate limit: 60 req/min per IP on the public page reads.
-  // (Public POST writes are limited inside their route handlers.)
-  if (req.method === "GET" && (/^\/q\//.test(path) || /^\/r\//.test(path))) {
-    const limited = await checkRateLimit(req, "public-read");
-    if (limited) return limited;
-  }
+  // NOTE: public-page read rate limiting lives in the page server components
+  // (q/[token], r/[property]) via checkRateLimitByIp — Node-side, where the
+  // in-memory fallback state persists per process. It was previously also
+  // attempted here in middleware, but Edge isolates don't share module state
+  // across requests in production, so the middleware check never accumulated
+  // without Redis. Public POST writes are limited in their route handlers.
 
   if (!key) {
     // Dev stays open. Production refuses to serve anything but the health

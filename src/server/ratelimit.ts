@@ -125,13 +125,12 @@ export async function checkRateLimit(req: Request, bucket: RateBucket): Promise<
 
 /**
  * Enforce the bucket for a bare client IP. Same limits/state as
- * checkRateLimit — for server components (public pages) running in Node,
- * where module-level fallback state persists per process. (The middleware
- * also calls checkRateLimit for these paths: with Upstash Redis configured
- * both share the Redis counters and each page view costs 2 tokens of the
- * 60/min budget; without Redis the middleware check is inert in production
- * because Edge isolates don't share module state, and this Node-side check
- * is the real guard.)
+ * checkRateLimit — for server components (public pages) and route handlers
+ * running in Node, where module-level fallback state persists per process.
+ * (Public page reads are enforced here in the page components rather than in
+ * middleware: Edge isolates don't share module state across requests in
+ * production, so a middleware-side in-memory check never accumulates. With
+ * Upstash Redis configured this uses the shared Redis counters instead.)
  */
 export async function checkRateLimitByIp(ip: string, bucket: RateBucket): Promise<NextResponse | null> {
   const key = `${bucket}:${ip}`;

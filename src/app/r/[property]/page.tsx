@@ -4,6 +4,10 @@ import { headers } from "next/headers";
 import { checkRateLimitByIp, clientIpFromHeaders } from "@/server/ratelimit";
 import { DsrFormClient } from "./DsrFormClient";
 
+// The property id is user-supplied and the rate-limit counter must run on
+// every request — this page can never use the full route cache.
+export const dynamic = "force-dynamic";
+
 
 export default async function PublicDsrPage({ params }: { params: Promise<{ property: string }> }) {
   const { property } = await params;
