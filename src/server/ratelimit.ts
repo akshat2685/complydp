@@ -95,12 +95,17 @@ try {
 }
 
 export function getClientIp(req: Request): string {
-  const fwd = req.headers.get("x-forwarded-for");
+  return clientIpFromHeaders(req.headers);
+}
+
+/** Client IP from a Headers object — for server components (Node runtime). */
+export function clientIpFromHeaders(h: Headers): string {
+  const fwd = h.get("x-forwarded-for");
   if (fwd) {
     const first = fwd.split(",")[0].trim();
     if (first) return first;
   }
-  return req.headers.get("x-real-ip")?.trim() || "unknown";
+  return h.get("x-real-ip")?.trim() || "unknown";
 }
 
 function rateLimited(retryAfter: number): NextResponse {
@@ -115,7 +120,20 @@ function rateLimited(retryAfter: number): NextResponse {
  * response to return directly from the route handler / middleware.
  */
 export async function checkRateLimit(req: Request, bucket: RateBucket): Promise<NextResponse | null> {
-  const ip = getClientIp(req);
+  return checkRateLimitByIp(getClientIp(req), bucket);
+}
+
+/**
+ * Enforce the bucket for a bare client IP. Same limits/state as
+ * checkRateLimit — for server components (public pages) running in Node,
+ * where module-level fallback state persists per process. (The middleware
+ * also calls checkRateLimit for these paths: with Upstash Redis configured
+ * both share the Redis counters and each page view costs 2 tokens of the
+ * 60/min budget; without Redis the middleware check is inert in production
+ * because Edge isolates don't share module state, and this Node-side check
+ * is the real guard.)
+ */
+export async function checkRateLimitByIp(ip: string, bucket: RateBucket): Promise<NextResponse | null> {
   const key = `${bucket}:${ip}`;
   const ups = getLimiters();
   if (ups) {

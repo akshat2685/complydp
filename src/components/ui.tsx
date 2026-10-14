@@ -361,3 +361,26 @@ export function BackLink({ href, children }: { href: string; children: React.Rea
     </Link>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  RateLimited — public pages when the read rate limit trips           */
+/* ------------------------------------------------------------------ */
+export function RateLimited() {
+  return (
+    <div className="min-h-screen bg-paper flex items-center justify-center px-4">
+      <div className="w-full max-w-md text-center">
+        <div className="flex justify-center mb-3">
+          <Seal size={44} />
+        </div>
+        <div className="kicker kicker-danger mb-1.5">Too many requests</div>
+        <h1 className="font-display text-[26px] font-bold text-ink tracking-tight">
+          Slow down a moment
+        </h1>
+        <p className="text-[13.5px] text-ink-muted mt-2 leading-relaxed">
+          This page is rate-limited to keep the service fair for everyone.
+          Please wait a minute and try again.
+        </p>
+      </div>
+    </div>
+  );
+}

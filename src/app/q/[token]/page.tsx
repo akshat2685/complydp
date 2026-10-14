@@ -1,6 +1,8 @@
 import { qOne, parseJson } from "@/server/db";
-import { Seal, EmptyState } from "@/components/ui";
+import { Seal, EmptyState, RateLimited } from "@/components/ui";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
+import { checkRateLimitByIp, clientIpFromHeaders } from "@/server/ratelimit";
 import { QuestionnaireFormClient } from "./QuestionnaireFormClient";
 
 /**
@@ -15,6 +17,13 @@ export default async function PublicQuestionnairePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
+
+  // Public-read rate limit (Node-side; the middleware check covers the
+  // Redis-configured case — see checkRateLimitByIp docs).
+  const ip = clientIpFromHeaders(await headers());
+  if (await checkRateLimitByIp(ip, "public-read")) {
+    return <RateLimited />;
+  }
 
   // The token is the auth — an unknown token is a 404, not a login prompt.
   const qn = await qOne("SELECT * FROM questionnaires WHERE token = ?", token) as | { id: string; vendor_id: string; status: string }

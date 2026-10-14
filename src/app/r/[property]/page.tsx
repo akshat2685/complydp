@@ -1,9 +1,19 @@
 import { qOne, parseJson } from "@/server/db";
-import { Seal, EmptyState } from "@/components/ui";
+import { Seal, EmptyState, RateLimited } from "@/components/ui";
+import { headers } from "next/headers";
+import { checkRateLimitByIp, clientIpFromHeaders } from "@/server/ratelimit";
 import { DsrFormClient } from "./DsrFormClient";
+
 
 export default async function PublicDsrPage({ params }: { params: Promise<{ property: string }> }) {
   const { property } = await params;
+
+  // Public-read rate limit (Node-side; the middleware check covers the
+  // Redis-configured case — see checkRateLimitByIp docs).
+  const ip = clientIpFromHeaders(await headers());
+  if (await checkRateLimitByIp(ip, "public-read")) {
+    return <RateLimited />;
+  }
 
   const prop = await qOne("SELECT * FROM properties WHERE id = ?", property) as | { id: string; tenant_id: string; domain: string; display_name: string }
     | undefined;
